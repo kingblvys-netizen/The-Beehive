@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  /* Define the Beehive Color Palette for Tailwind v4 */
+  --color-bee-yellow: #FFD700;
+  --color-bee-orange: #FFB800;
+  --color-bee-black: #0A0A0A;
+  --color-bee-dark: #121212;
+  --color-bee-gray: #1F1F1F;
+
+  /* Define the Mesh Background */
+  --background-image-bee-mesh: radial-gradient(at 0% 0%, rgba(255, 215, 0, 0.15) 0, transparent 50%), 
+                                radial-gradient(at 100% 100%, rgba(255, 184, 0, 0.1) 0, transparent 50%);
+}
+
+/* Force the Beehive Dark Theme across the whole site */
+:root {
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+}
+
+body {
+  background-color: var(--color-bee-black);
+  background-image: var(--background-image-bee-mesh);
+  color: var(--foreground);
+  min-height: 100vh;
+}
+
+/* Fix for buttons that might be hidden by default browser styles */
+button {
+  cursor: pointer;
+}
