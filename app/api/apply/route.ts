@@ -1,54 +1,39 @@
+import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
-import { getQuestions } from '../../data';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { roleTitle, username, answers } = body;
+    const { roleTitle, username, discord_id, answers } = body;
 
-    const roleQuestions = getQuestions(roleTitle);
+    // 1. Validate that we have the necessary data
+    if (!discord_id || !username || !roleTitle) {
+      return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+    }
 
-    // Extract specific Discord info for the header fields
-    const discordUser = answers['discord_user'] || username || "Unknown";
-    const discordID = answers['discord_id'] || "Not Provided";
+    // 2. Insert the application into your Postgres database
+    // This uses the 'applications' table you created earlier
+    await sql`
+      INSERT INTO applications (discord_id, discord_name, role, status, answers)
+      VALUES (
+        ${discord_id}, 
+        ${username}, 
+        ${roleTitle}, 
+        'pending', 
+        ${JSON.stringify(answers)}
+      );
+    `;
 
-    // Filter out the header info from the main description to avoid repetition
-    const formattedAnswers = Object.entries(answers)
-      .filter(([id]) => id !== 'discord_user' && id !== 'discord_id')
-      .map(([id, value]) => {
-        const questionObj = roleQuestions.find(q => q.id === id);
-        const questionLabel = questionObj ? questionObj.label : id.toUpperCase().replace(/_/g, ' ');
-        return `**${questionLabel}**\n${value}`;
-      })
-      .join('\n\n');
-
-    const discordPayload = {
-      username: "Beehive Recruitment",
-      avatar_url: "https://i.imgur.com/8N4N5iH.png",
-      embeds: [{
-        title: `🐝 New Application: ${roleTitle}`,
-        color: 0xFACC15, 
-        fields: [
-          { name: "Discord User", value: discordUser, inline: true },
-          { name: "Discord ID", value: discordID, inline: true },
-          { name: "Position", value: roleTitle, inline: true },
-        ],
-        description: `**User Responses:**\n\n${formattedAnswers}`,
-        footer: { text: "The Beehive Careers • Identity Verified" },
-        timestamp: new Date().toISOString(),
-      }],
-    };
-
-    const response = await fetch(process.env.DISCORD_WEBHOOK_URL!, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(discordPayload),
-    });
-
-    if (!response.ok) return NextResponse.json({ message: 'Webhook failed' }, { status: 500 });
-
+    // 3. Return a success message to the frontend
     return NextResponse.json({ message: 'Success' }, { status: 200 });
+
   } catch (error) {
-    return NextResponse.json({ message: 'Server error' }, { status: 500 });
+    // Log the error to your Vercel console so you can see it in the 'Logs' tab
+    console.error('Database insertion error:', error);
+    
+    return NextResponse.json(
+      { message: 'Server error: Could not save application' }, 
+      { status: 500 }
+    );
   }
 }
