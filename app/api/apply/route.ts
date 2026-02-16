@@ -4,25 +4,36 @@ import { authOptions } from "@/lib/auth";
 import { sql } from "@/lib/db";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  const userId = (session?.user as { id?: string } | undefined)?.id;
+  try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
 
-  if (!session || !userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session || !userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { answers } = body ?? {};
+
+    if (!answers || typeof answers !== "object") {
+      return NextResponse.json({ error: "Missing or invalid answers" }, { status: 400 });
+    }
+
+    const result = await sql`
+      INSERT INTO applications (user_id, answers)
+      VALUES (${userId}, ${sql.json(answers)})
+      RETURNING *;
+    `;
+
+    return NextResponse.json(result[0], { status: 201 });
+  } catch (err: any) {
+    console.error("[/api/apply] error:", err);
+    return NextResponse.json(
+      { error: "Failed to submit application" },
+      { status: 500 }
+    );
   }
-
-  const body = await req.json();
-  const { answers } = body;
-
-  if (!answers) {
-    return NextResponse.json({ error: "Missing answers" }, { status: 400 });
-  }
-
-  const result = await sql`
-    INSERT INTO applications (user_id, answers)
-    VALUES (${userId}, ${JSON.stringify(answers)})
-    RETURNING *;
-  `;
-
-  return NextResponse.json(result[0]);
 }
+
+console.log("SELECT to_regclass('public.applications');");
+console.log((await sql`SELECT to_regclass('public.applications');`).toString());
