@@ -13,10 +13,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const { applicationId, status } = await req.json();
+    const { applicationId, status } = await req.json(); // status will be 'approved' or 'declined'
 
-    await sql`UPDATE applications SET status = ${status} WHERE id = ${applicationId}`;
-    return NextResponse.json({ message: 'Status updated' });
+    await sql`
+      UPDATE applications 
+      SET status = ${status} 
+      WHERE id = ${applicationId}
+    `;
+
+    return NextResponse.json({ message: `Application ${status}` }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ message: 'Update failed' }, { status: 500 });
   }

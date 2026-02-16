@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next";
 
 const ADMIN_IDS = ["1208908529411301387", "1406555930769756161", "1241945084346372247"];
 
-export async function GET() {
+export async function GET() { // MUST BE GET
   try {
     const session = await getServerSession();
     const userId = (session?.user as any)?.id;
@@ -13,13 +13,9 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Pulls the correct columns from Neon
     const { rows } = await sql`
-      SELECT id, discord_id, username, role_title, status, answers, created_at 
-      FROM applications 
-      ORDER BY created_at DESC
+      SELECT * FROM applications ORDER BY created_at DESC
     `;
-
     return NextResponse.json(rows, { status: 200 });
   } catch (error) {
     return NextResponse.json({ message: 'Fetch failed' }, { status: 500 });
