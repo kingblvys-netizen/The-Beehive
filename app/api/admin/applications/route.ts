@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Pulls the columns confirmed in your SQL execution
+    // Fetches columns confirmed in your SQL execution
     const { rows } = await sql`
       SELECT id, discord_id, username, role_title, status, answers, created_at 
       FROM applications 
@@ -22,6 +22,7 @@ export async function GET() {
 
     return NextResponse.json(rows, { status: 200 });
   } catch (error) {
+    console.error('Admin Fetch Error:', error);
     return NextResponse.json({ message: 'Fetch failed' }, { status: 500 });
   }
 }
