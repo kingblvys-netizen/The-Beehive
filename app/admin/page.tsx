@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
 
-// --- ADMIN IDS (Move to lib/config.ts if possible) ---
+// --- ADMIN IDS ---
 const ADMIN_IDS = [
   "1208908529411301387", 
   "1406555930769756161", 
@@ -30,7 +30,7 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  // --- CURSOR PHYSICS (Optimized for Zero Lag) ---
+  // --- CURSOR PHYSICS (Zero Lag) ---
   const mouseX = useMotionValue(-100);
   const mouseY = useMotionValue(-100);
   const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 };
@@ -84,27 +84,22 @@ export default function AdminDashboard() {
         acc[curr.role_title] = (acc[curr.role_title] || 0) + 1;
         return acc;
       }, {} as any)
-    ).sort((a: any, b: any) => b[1] - a[1])[0][0] : 'N/A'
+    ).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A' : 'N/A'
   };
 
   // --- ACTIONS ---
-  const handleDecision = async (id: number, decision: 'approved' | 'declined') => {
+  const handleDecision = async (id: number, decision: string) => {
     setProcessingId(id);
-    const auditNote = `${decision.toUpperCase()} by ${session?.user?.name} on ${new Date().toLocaleDateString()}`;
-    
     try {
       const res = await fetch('/api/admin/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          applicationId: id, 
-          status: decision,
-          auditNote: auditNote // Passing the admin log to the backend
-        }),
+        body: JSON.stringify({ applicationId: id, status: decision }),
       });
       if (res.ok) {
+        const finalStatus = decision === 'reset' ? 'pending' : decision;
         setApplications(prev => prev.map(app => 
-          app.id === id ? { ...app, status: decision, audit_note: auditNote } : app
+          app.id === id ? { ...app, status: finalStatus } : app
         ));
         if (selectedApp?.id === id) setSelectedApp(null);
       }
@@ -244,7 +239,6 @@ export default function AdminDashboard() {
                 <tr key={app.id} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-6">
                     <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
-                    {/* DISCORD PROFILE LINK */}
                     <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
                       {app.discord_id} <ExternalLink size={10} />
                     </a>
@@ -293,13 +287,28 @@ export default function AdminDashboard() {
                 })}
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'approved')} className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all">
-                   <CheckCircle2 size={16}/> Approve Entry
-                </button>
-                <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'declined')} className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all">
-                   <XSquare size={16}/> Decline Entry
-                </button>
+              {/* ACTION ZONE */}
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'approved')} className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all">
+                    <CheckCircle2 size={16}/> Approve Entry
+                  </button>
+                  <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'declined')} className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all">
+                    <XSquare size={16}/> Decline Entry
+                  </button>
+                </div>
+
+                {/* SECOND CHANCE RESET BUTTON */}
+                {selectedApp.status !== 'pending' && (
+                  <button 
+                    disabled={processingId === selectedApp.id} 
+                    onClick={() => handleDecision(selectedApp.id, 'reset')} 
+                    className="w-full py-3 bg-white/5 text-neutral-500 border border-white/10 rounded-xl font-black uppercase text-[9px] tracking-[0.3em] flex items-center justify-center gap-2 hover:bg-yellow-500/10 hover:text-yellow-500 hover:border-yellow-500/50 transition-all"
+                  >
+                    <RefreshCw size={14} className={processingId === selectedApp.id ? "animate-spin" : ""}/> 
+                    Reset Protocol (Second Chance)
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>

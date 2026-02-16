@@ -21,20 +21,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
     }
 
-    // 2. INPUT VALIDATION: Handle different variable names
+    // 2. INPUT VALIDATION
     const body = await req.json();
     const applicationId = body.applicationId || body.id;
-    // The frontend might send "status" or "decision", we accept both.
-    const newStatus = body.status || body.decision; 
+    const rawStatus = body.status || body.decision; 
 
-    if (!applicationId || !newStatus) {
-      return NextResponse.json({ error: 'Missing Application ID or Status' }, { status: 400 });
+    if (!applicationId || !rawStatus) {
+      return NextResponse.json({ error: 'Missing Data' }, { status: 400 });
     }
 
-    // 3. DATABASE UPDATE
+    // 3. TACTICAL LOGIC: Handle Reset vs Decision
+    const isReset = rawStatus === 'reset';
+    const finalStatus = isReset ? 'pending' : rawStatus;
+    
+    // Create the Audit Note for the Admin Panel
+    const auditNote = isReset 
+      ? `RESET by ${adminUser.name} on ${new Date().toLocaleDateString()}`
+      : `${rawStatus.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
+
+    // 4. DATABASE UPDATE: Syncing Status and Audit Note
     const result = await sql`
       UPDATE applications 
-      SET status = ${newStatus} 
+      SET status = ${finalStatus}, 
+          audit_note = ${auditNote} 
       WHERE id = ${applicationId}
       RETURNING *;
     `;
@@ -45,23 +54,28 @@ export async function POST(req: Request) {
 
     const updatedApp = result.rows[0];
 
-    // 4. (OPTIONAL) DISCORD LOGGING
-    // If you add a DISCORD_WEBHOOK_URL to your .env file, this will log actions!
+    // 5. DISCORD INTELLIGENCE: Automated Notification
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (webhookUrl) {
-      const color = newStatus === 'approved' ? 0x22C55E : 0xEF4444; // Green or Red
+      const statusColors: Record<string, number> = {
+        approved: 0x22C55E, // Green
+        declined: 0xEF4444, // Red
+        reset: 0xFACC15    // Yellow
+      };
+
       await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           embeds: [{
-            title: `Candidate ${newStatus === 'approved' ? 'ACCEPTED' : 'DECLINED'}`,
-            description: `**Admin:** ${adminUser.name}\n**Candidate:** ${updatedApp.username}\n**Role:** ${updatedApp.role_title}`,
-            color: color,
-            timestamp: new Date().toISOString()
+            title: isReset ? `🔄 Protocol Reset` : `📡 Candidate ${rawStatus.toUpperCase()}`,
+            description: `**Admin:** ${adminUser.name}\n**Candidate:** ${updatedApp.username}\n**Target Role:** ${updatedApp.role_title}\n**Log:** ${auditNote}`,
+            color: statusColors[rawStatus] || 0x000000,
+            timestamp: new Date().toISOString(),
+            footer: { text: `Hive ID: #${updatedApp.id}` }
           }]
         })
-      }).catch(err => console.error("Webhook failed", err));
+      }).catch(err => console.error("Discord Webhook failed:", err));
     }
 
     return NextResponse.json({ ok: true, application: updatedApp });
