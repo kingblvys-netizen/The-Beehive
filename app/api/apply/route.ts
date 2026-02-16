@@ -1,30 +1,16 @@
 import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
-import { getServerSession } from "next-auth/next";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession();
     const body = await req.json();
-    
-    // Safety: ensure we have an identity even if the form fails to send it
-    const discord_id = body.discord_id || (session?.user as any)?.id; 
-    const username = body.username || session?.user?.name;
-    const { roleTitle, answers } = body;
+    console.log("BODY RECEIVED:", body);
 
-    if (!discord_id || !username || !roleTitle) {
-      return NextResponse.json({ message: 'Identity missing' }, { status: 400 });
-    }
+    await sql`SELECT 1`;
 
-    // MATCHES NEON SQL: username, role_title
-    await sql`
-      INSERT INTO applications (discord_id, username, role_title, status, answers)
-      VALUES (${discord_id}, ${username}, ${roleTitle}, 'pending', ${JSON.stringify(answers)});
-    `;
-
-    return NextResponse.json({ message: 'Success' }, { status: 200 });
+    return NextResponse.json({ message: "DB works" });
   } catch (error) {
-    console.error('Database Error:', error);
-    return NextResponse.json({ message: 'Database rejection' }, { status: 500 });
+    console.error("ERROR:", error);
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
