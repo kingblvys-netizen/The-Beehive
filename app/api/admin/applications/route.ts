@@ -2,42 +2,48 @@ import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth/next";
 
+// --- AUTHORIZED ADMIN LIST ---
+// Must match all other admin-restricted files
+const ADMIN_IDS = [
+  "1208908529411301387", // King B
+  "1406555930769756161", // Admin 2
+  "1241945084346372247"  // Admin 3
+];
+
 export async function POST(req: Request) {
   try {
+    // 1. Security Check: Verify session and Admin ID
     const session = await getServerSession();
-    const body = await req.json();
-    
-    // Safety fallback: Get identity from session if body is missing it
-    const discord_id = body.discord_id || (session?.user as any)?.id; 
-    const username = body.username || session?.user?.name;
-    const { roleTitle, answers } = body;
+    const userId = (session?.user as any)?.id;
 
-    if (!discord_id || !username || !roleTitle) {
-      return NextResponse.json(
-        { message: 'Identity verification failed. Please re-login.' }, 
-        { status: 400 }
-      );
+    if (!session || !ADMIN_IDS.includes(userId)) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Save to Database with a default 'pending' status
-    await sql`
-      INSERT INTO applications (discord_id, username, role_title, status, answers)
-      VALUES (
-        ${discord_id}, 
-        ${username}, 
-        ${roleTitle}, 
-        'pending', 
-        ${JSON.stringify(answers)}
-      );
+    // 2. Data Extraction
+    const { applicationId, status } = await req.json(); // status will be 'approved' or 'declined'
+
+    // 3. Validation: Ensure we have a valid ID and allowed status
+    if (!applicationId || !['approved', 'declined'].includes(status)) {
+      return NextResponse.json({ message: 'Invalid Protocol Data' }, { status: 400 });
+    }
+
+    // 4. Update Database
+    // Targets the 'status' column verified in your SQL execution
+    const result = await sql`
+      UPDATE applications 
+      SET status = ${status} 
+      WHERE id = ${applicationId}
     `;
 
-    return NextResponse.json({ message: 'Success' }, { status: 200 });
+    // 5. Verify the update actually happened
+    if (result.rowCount === 0) {
+      return NextResponse.json({ message: 'Record not found in database' }, { status: 404 });
+    }
 
+    return NextResponse.json({ message: `Application status updated to: ${status}` }, { status: 200 });
   } catch (error) {
-    console.error('Database Error:', error);
-    return NextResponse.json(
-      { message: 'Server error: Could not save application' }, 
-      { status: 500 }
-    );
+    console.error('Decision Update Error:', error);
+    return NextResponse.json({ message: 'Database transmission failed' }, { status: 500 });
   }
 }

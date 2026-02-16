@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     
     // 2. THE FIX: Fallback to session data if the form body is missing fields
-    // This prevents the "400 Bad Request" when the form doesn't send the ID explicitly
+    // Using names that exactly match your database table columns
     const discord_id = body.discord_id || (session?.user as any)?.id; 
     const username = body.username || session?.user?.name;
     const { roleTitle, answers } = body;
@@ -24,8 +24,9 @@ export async function POST(req: Request) {
     }
 
     // 4. Save to Database
+    // These column names match your successful SQL 'CREATE TABLE' command
     await sql`
-      INSERT INTO applications (discord_id, discord_name, role, status, answers)
+      INSERT INTO applications (discord_id, username, role_title, status, answers)
       VALUES (
         ${discord_id}, 
         ${username}, 
