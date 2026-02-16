@@ -1,6 +1,6 @@
 import { Server, Shield, Users, MessageCircle, Video, Camera, LucideIcon } from 'lucide-react';
 
-// 1. Define strict interfaces
+// 1. Strict Interfaces
 export interface Role {
   id: string;
   title: string;
@@ -72,20 +72,28 @@ export const roles: Role[] = [
 
 // 3. Question Logic
 export const getQuestions = (roleId: string | { id: string }): Question[] => {
-  // Normalize the input to a lowercase string ID
   const searchKey = (typeof roleId === 'string' ? roleId : roleId?.id || '').toLowerCase().trim();
 
-  // Common questions for everyone
   const baseQuestions: Question[] = [
     { id: 'discord_user', label: 'Discord Username', type: 'text', placeholder: 'e.g. kingb' },
     { id: 'discord_id', label: 'Discord User ID', type: 'text', placeholder: 'e.g. 1208908529411301387' },
-    { id: 'age', label: 'How old are you?', type: 'text', placeholder: 'Enter your age' },
+    
+    // UPDATED: Age is now multiple choice ending in 21+
+    { 
+      id: 'age', 
+      label: 'How old are you?', 
+      type: 'radio', 
+      options: ['13-15', '16-17', '18-20', '21+'] 
+    },
+    
+    // UPDATED: Days Active is multiple choice
     { 
       id: 'days_active', 
       label: 'How many days of the week are you active or available?', 
       type: 'radio', 
       options: ['1-2 Days', '3-4 Days', '5-6 Days', 'Every Day'] 
     },
+    
     { id: 'timezone', label: 'What is your timezone and most active hours?', type: 'text', placeholder: 'e.g. EST, 4 PM - 10 PM' }
   ];
 
