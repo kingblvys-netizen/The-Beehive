@@ -1,35 +1,49 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { sql } from "@/lib/db";
+import { NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres';
+import { getServerSession } from "next-auth/next";
 
-function isAdmin(discordId?: string) {
-  const ids = (process.env.ADMIN_DISCORD_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return !!discordId && ids.includes(discordId);
-}
+// --- AUTHORIZED ADMINS ---
+// These are the Discord IDs allowed to see the dashboard.
+const ADMIN_IDS = [
+  "1208908529411301387", // King B
+  "1406555930769756161", // Admin 2
+  "1241945084346372247"  // Admin 3
+];
+
+// Force the server to always fetch fresh data (fixes "stale" lists)
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as { discordId?: string } | undefined;
+    // 1. Security Check
+    const session = await getServerSession();
+    const userId = (session?.user as any)?.id;
 
-    if (!session || !isAdmin(user?.discordId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!session || !ADMIN_IDS.includes(userId)) {
+      return NextResponse.json({ message: 'Unauthorized Access' }, { status: 401 });
     }
 
-    const rows = await sql`
-      SELECT id, user_id, discord_username, role, answers, status, created_at
-      FROM applications
-      ORDER BY created_at DESC
-      LIMIT 200;
+    // 2. Fetch Data with "Alias" Fix
+    // We select 'role_title' but tell the code to treat it as 'role'.
+    // This tricks the frontend into displaying the data correctly.
+    const { rows } = await sql`
+      SELECT 
+        id, 
+        discord_id, 
+        username, 
+        role_title as role, 
+        status, 
+        answers, 
+        created_at 
+      FROM applications 
+      ORDER BY created_at DESC;
     `;
 
-    return NextResponse.json({ ok: true, applications: rows });
-  } catch (err: any) {
-    console.error("[/api/admin/applications] error", err);
-    return NextResponse.json({ error: "Failed to load applications" }, { status: 500 });
+    // 3. Success
+    return NextResponse.json(rows, { status: 200 });
+
+  } catch (error) {
+    console.error('Admin Fetch Error:', error);
+    return NextResponse.json({ message: 'Failed to retrieve records' }, { status: 500 });
   }
 }
