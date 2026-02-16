@@ -8,6 +8,7 @@ export interface Role {
   description: string;
   icon: LucideIcon;       
   commitment: string;     
+  isOpen: boolean; // Added to control recruitment status
 }
 
 export interface Question {
@@ -26,7 +27,8 @@ export const roles: Role[] = [
     level: 'HIGH', 
     description: 'Oversee infrastructure and manage high-level technical operations.',
     icon: Server,
-    commitment: '25+ Hours / Week'
+    commitment: '25+ Hours / Week',
+    isOpen: true
   },
   { 
     id: 'head-staff', 
@@ -34,7 +36,8 @@ export const roles: Role[] = [
     level: 'HIGH', 
     description: 'Lead the moderation team and ensure high staff standards.',
     icon: Shield,
-    commitment: '20+ Hours / Week'
+    commitment: '20+ Hours / Week',
+    isOpen: true
   },
   { 
     id: 'staff-team', 
@@ -42,7 +45,8 @@ export const roles: Role[] = [
     level: 'MID', 
     description: 'General server moderation, player support, and rule enforcement.',
     icon: Users,
-    commitment: '10+ Hours / Week'
+    commitment: '10+ Hours / Week',
+    isOpen: true
   },
   { 
     id: 'twitch-staff', 
@@ -50,7 +54,8 @@ export const roles: Role[] = [
     level: 'MID', 
     description: 'Moderate live events and manage the streaming community chat atmosphere.',
     icon: MessageCircle,
-    commitment: 'Event Based'
+    commitment: 'Event Based',
+    isOpen: true
   },
   { 
     id: 'twitch-partner', 
@@ -58,7 +63,8 @@ export const roles: Role[] = [
     level: 'LOW', 
     description: 'Elite role for verified Twitch Partners with high community reach.',
     icon: Video,
-    commitment: 'Content Driven'
+    commitment: 'Content Driven',
+    isOpen: true
   },
   { 
     id: 'content-creator', 
@@ -66,7 +72,8 @@ export const roles: Role[] = [
     level: 'LOW', 
     description: 'Rising YouTube and TikTok creators (2k+ followers/subs).',
     icon: Camera,
-    commitment: 'Content Driven'
+    commitment: 'Content Driven',
+    isOpen: true
   }
 ];
 
@@ -78,7 +85,7 @@ export const getQuestions = (roleId: string | { id: string }): Question[] => {
     { id: 'discord_user', label: 'Discord Username', type: 'text', placeholder: 'e.g. kingb' },
     { id: 'discord_id', label: 'Discord User ID', type: 'text', placeholder: 'e.g. 1208908529411301387' },
     
-    // UPDATED: Age is now multiple choice ending in 21+
+    // Age is now multiple choice ending in 21+
     { 
       id: 'age', 
       label: 'How old are you?', 
@@ -86,7 +93,7 @@ export const getQuestions = (roleId: string | { id: string }): Question[] => {
       options: ['13-15', '16-17', '18-20', '21+'] 
     },
     
-    // UPDATED: Days Active is multiple choice
+    // Days Active is multiple choice
     { 
       id: 'days_active', 
       label: 'How many days of the week are you active or available?', 
