@@ -31,6 +31,7 @@ export default function AdminDashboard() {
   const [selectedApp, setSelectedApp] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100);
@@ -132,6 +133,24 @@ export default function AdminDashboard() {
     } catch (error) {
       setRoleSettings(prev => ({ ...prev, [roleId]: currentStatus }));
       alert("Failed to update recruitment channel.");
+    }
+  };
+
+  const handleDeleteApplication = async (id: string) => {
+    if (!confirm("Delete this application permanently?")) return;
+    try {
+      setDeletingId(id);
+      const res = await fetch(`/api/admin/applications/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Delete failed");
+      }
+      setApplications((prev) => prev.filter((a: any) => String(a.id) !== String(id)));
+      if (selectedApp?.id === id) setSelectedApp(null);
+    } catch (e: any) {
+      alert(e?.message || "Delete failed");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -248,6 +267,17 @@ export default function AdminDashboard() {
         </div>
 
         {/* DATA TABLE */}
+        <div className="mb-8 relative max-w-md group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
+          <input 
+            type="text" 
+            placeholder="SEARCH DATABASE..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-neutral-900/50 border border-white/10 rounded-xl py-4 pl-12 pr-6 text-sm focus:border-yellow-500 outline-none transition-all placeholder:text-neutral-700 text-white font-bold uppercase tracking-widest"
+          />
+        </div>
+
         <div className="bg-neutral-900/30 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-md">
           <table className="w-full text-left">
             <thead>
