@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession, signIn } from "next-auth/react";
 import { ChevronLeft } from "lucide-react";
 import MarkdownContent from "@/app/knowledge/components/MarkdownContent";
 
@@ -19,67 +18,33 @@ type Article = {
 export default function KnowledgeArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState("");
-  const [accessDenied, setAccessDenied] = useState(false);
   const [loading, setLoading] = useState(true);
-  const { data: session, status } = useSession();
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError("");
-      setAccessDenied(false);
       try {
         const p = await params;
-        const res = await fetch(`/api/knowledge/articles/${encodeURIComponent(p.id)}`, { cache: "no-store" });
+        const res = await fetch(`/api/knowledge/articles/${encodeURIComponent(p.id)}?audience=public`, { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          if (res.status === 403) {
-            setAccessDenied(true);
-          }
-          throw new Error(data?.error || "Failed to load article");
+          throw new Error(data?.error || "Failed to load announcement");
         }
         setArticle(data?.article || null);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to load article";
+        const message = err instanceof Error ? err.message : "Failed to load announcement";
         setError(message);
       } finally {
         setLoading(false);
       }
     };
 
-    if (status === "authenticated") {
-      load();
-    }
-  }, [params, status]);
+    load();
+  }, [params]);
 
-  if (status === "loading" || loading) {
-    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading article...</div>;
-  }
-
-  if (!session) {
-    return (
-      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-black uppercase tracking-widest mb-3">Knowledge Base</h1>
-          <p className="text-neutral-400 mb-5">Sign in to access staff documentation.</p>
-          <button onClick={() => signIn("discord")} className="px-4 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300">Sign in with Discord</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (accessDenied) {
-    return (
-      <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6">
-        <div className="max-w-3xl mx-auto">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mb-6 min-h-10">
-            <ChevronLeft size={14} /> Back to Home
-          </Link>
-          <div className="text-yellow-400 uppercase text-sm tracking-widest">Knowledge access required</div>
-          <p className="mt-3 text-neutral-400">Only users added as Staff or Managers/Admin through the admin panel can access the Knowledge Base.</p>
-        </div>
-      </div>
-    );
+  if (loading) {
+    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading announcement...</div>;
   }
 
   if (!article) {
@@ -87,9 +52,9 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
       <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6">
         <div className="max-w-3xl mx-auto">
           <Link href="/knowledge" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mb-6 min-h-10">
-            <ChevronLeft size={14} /> Back to Knowledge Base
+            <ChevronLeft size={14} /> Back to Announcements
           </Link>
-          <div className="text-red-400 uppercase text-sm tracking-widest">{error || "Article not found"}</div>
+          <div className="text-red-400 uppercase text-sm tracking-widest">{error || "Announcement not found"}</div>
         </div>
       </div>
     );
@@ -99,7 +64,7 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
     <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
       <article className="max-w-4xl mx-auto pb-10">
         <Link href="/knowledge" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mb-6 min-h-10">
-          <ChevronLeft size={14} /> Back to Knowledge Base
+          <ChevronLeft size={14} /> Back to Announcements
         </Link>
 
         <div className="border border-white/10 bg-black/30 rounded-2xl p-6 md:p-8">
@@ -113,7 +78,7 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
         </div>
 
         <Link href="/knowledge" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mt-6 min-h-10">
-          <ChevronLeft size={14} /> Back to Knowledge Base
+          <ChevronLeft size={14} /> Back to Announcements
         </Link>
       </article>
     </div>

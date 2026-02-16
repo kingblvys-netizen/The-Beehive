@@ -14,8 +14,12 @@ export async function GET() {
         {
           authenticated: false,
           role: null,
+          canOpenAdminPanel: false,
           canAccessAdmin: false,
           canAccessKnowledge: false,
+          canManageKnowledge: false,
+          canViewLogs: false,
+          canManageAccessControl: false,
           discordId: "",
         },
         { status: 200 }
@@ -28,8 +32,12 @@ export async function GET() {
       discordId: info.discordId,
       role: info.role,
       source: info.source,
+      canOpenAdminPanel: info.canOpenAdminPanel,
       canAccessAdmin: info.canAccessAdmin,
       canAccessKnowledge: info.canAccessKnowledge,
+      canManageKnowledge: info.canManageKnowledge,
+      canViewLogs: info.canViewLogs,
+      canManageAccessControl: info.canManageAccessControl,
     });
   } catch (error) {
     console.error("[admin/access/me] error:", error);

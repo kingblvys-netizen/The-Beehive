@@ -7,6 +7,7 @@ export type KnowledgeArticle = {
   slug: string;
   title: string;
   category: string;
+  audience: "internal" | "public";
   summary: string | null;
   content: string;
   published: boolean;
@@ -23,6 +24,7 @@ export async function ensureKnowledgeTable() {
       slug TEXT NOT NULL UNIQUE,
       title TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT 'general',
+      audience TEXT NOT NULL DEFAULT 'internal' CHECK (audience IN ('internal', 'public')),
       summary TEXT,
       content TEXT NOT NULL,
       published BOOLEAN NOT NULL DEFAULT false,
@@ -41,6 +43,27 @@ export async function ensureKnowledgeTable() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_knowledge_articles_category
       ON knowledge_articles(category);
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_knowledge_articles_audience_published
+      ON knowledge_articles(audience, published, updated_at DESC);
+  `;
+
+  await sql`
+    ALTER TABLE knowledge_articles
+    ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'internal';
+  `;
+
+  await sql`
+    ALTER TABLE knowledge_articles
+    DROP CONSTRAINT IF EXISTS knowledge_articles_audience_check;
+  `;
+
+  await sql`
+    ALTER TABLE knowledge_articles
+    ADD CONSTRAINT knowledge_articles_audience_check
+    CHECK (audience IN ('internal', 'public'));
   `;
 }
 

@@ -12,6 +12,7 @@ type Article = {
   slug: string;
   title: string;
   category: string;
+  audience: "internal" | "public";
   summary?: string | null;
   content: string;
   published: boolean;
@@ -22,6 +23,7 @@ type FormState = {
   title: string;
   slug: string;
   category: string;
+  audience: "internal" | "public";
   summary: string;
   content: string;
   published: boolean;
@@ -35,6 +37,7 @@ const EMPTY_FORM: FormState = {
   title: "",
   slug: "",
   category: "general",
+  audience: "internal",
   summary: "",
   content: "",
   published: false,
@@ -83,7 +86,7 @@ export default function AdminKnowledgePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
+  const [canManageKnowledge, setCanManageKnowledge] = useState<boolean | null>(null);
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [selected, setSelected] = useState<Article | null>(null);
@@ -102,15 +105,15 @@ export default function AdminKnowledgePage() {
       try {
         const res = await fetch("/api/admin/access/me", { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
-        setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+        setCanManageKnowledge(Boolean(data?.canManageKnowledge));
       } catch {
-        setCanAccessAdmin(false);
+        setCanManageKnowledge(false);
       }
     };
 
     if (status === "authenticated") loadAccess();
     if (status === "unauthenticated") {
-      setCanAccessAdmin(false);
+      setCanManageKnowledge(false);
       setLoading(false);
     }
   }, [status]);
@@ -127,13 +130,13 @@ export default function AdminKnowledgePage() {
   };
 
   useEffect(() => {
-    if (status === "authenticated" && canAccessAdmin) {
+    if (status === "authenticated" && canManageKnowledge) {
       loadArticles();
     }
-    if (status === "authenticated" && canAccessAdmin === false) {
+    if (status === "authenticated" && canManageKnowledge === false) {
       setLoading(false);
     }
-  }, [status, canAccessAdmin]);
+  }, [status, canManageKnowledge]);
 
   useEffect(() => {
     if (!selected) {
@@ -144,6 +147,7 @@ export default function AdminKnowledgePage() {
       title: selected.title || "",
       slug: selected.slug || "",
       category: selected.category || "general",
+      audience: selected.audience || "internal",
       summary: selected.summary || "",
       content: selected.content || "",
       published: Boolean(selected.published),
@@ -205,13 +209,14 @@ export default function AdminKnowledgePage() {
 
   const copyArticleLink = async () => {
     if (!selected?.slug) return;
-    const url = `${window.location.origin}/knowledge/${selected.slug}`;
+    const path = selected.audience === "public" ? "/knowledge" : "/staff-knowledge";
+    const url = `${window.location.origin}${path}/${selected.slug}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     } catch {
-      alert("Failed to copy article link.");
+      alert("Failed to copy content link.");
     }
   };
 
@@ -333,11 +338,11 @@ export default function AdminKnowledgePage() {
     return () => window.removeEventListener("keydown", onKeydown);
   }, [onSave]);
 
-  if (status === "loading" || canAccessAdmin === null || loading) {
-    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading knowledge base...</div>;
+  if (status === "loading" || canManageKnowledge === null || loading) {
+    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading content editor...</div>;
   }
 
-  if (!session || !canAccessAdmin) {
+  if (!session || !canManageKnowledge) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
         <div className="text-center">
@@ -354,23 +359,26 @@ export default function AdminKnowledgePage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest flex items-center gap-3">
-              <BookOpen className="text-yellow-500" size={22} /> Knowledge Base
+              <BookOpen className="text-yellow-500" size={22} /> Knowledge & Announcements
             </h1>
-            <p className="text-neutral-500 text-xs uppercase tracking-widest mt-2">Create and maintain staff documentation inside the platform</p>
+            <p className="text-neutral-500 text-xs uppercase tracking-widest mt-2">Create internal staff docs and public announcement posts</p>
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
             <Link href="/admin" className="px-3 py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest flex items-center gap-2 hover:border-yellow-500/40 min-h-10">
-              <ChevronLeft size={14} /> Back
+              <ChevronLeft size={14} /> Back to Admin Panel
             </Link>
             <Link href="/knowledge" className="px-3 py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest hover:border-yellow-500/40 min-h-10">
-              View Staff KB
+              View Public Announcements
+            </Link>
+            <Link href="/staff-knowledge" className="px-3 py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest hover:border-yellow-500/40 min-h-10">
+              Open Staff Knowledge
             </Link>
             <Link href="/admin/knowledge/import" className="px-3 py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest hover:border-yellow-500/40 min-h-10">
               Bulk Import
             </Link>
             <span className="ml-auto md:ml-0 text-[10px] uppercase tracking-widest text-neutral-500">
-              {savedAt ? `Draft Saved ${new Date(savedAt).toLocaleTimeString()}` : "Not Saved Yet"}
+              {savedAt ? `Draft saved ${new Date(savedAt).toLocaleTimeString()}` : "Draft not saved"}
             </span>
           </div>
         </div>
@@ -383,16 +391,16 @@ export default function AdminKnowledgePage() {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search articles"
-                  aria-label="Search knowledge articles"
+                  placeholder="Search content"
+                  aria-label="Search knowledge content"
                   className="w-full bg-black/40 border border-white/10 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-yellow-500/40"
                 />
               </div>
-              <button onClick={() => loadArticles(query)} className="px-3 py-2.5 border border-white/10 rounded-lg text-xs uppercase min-h-10">Go</button>
+              <button onClick={() => loadArticles(query)} className="px-3 py-2.5 border border-white/10 rounded-lg text-xs uppercase min-h-10">Search</button>
             </div>
 
             <button onClick={onCreateNew} className="w-full mb-3 px-3 py-2.5 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 rounded-lg text-xs uppercase tracking-widest flex items-center justify-center gap-2 min-h-10">
-              <Plus size={14} /> New Article
+              <Plus size={14} /> New Content
             </button>
 
             <div className="mb-3 grid grid-cols-2 gap-2">
@@ -412,14 +420,14 @@ export default function AdminKnowledgePage() {
                 <button
                   key={article.id}
                   onClick={() => setSelected(article)}
-                  aria-label={`Open article ${article.title}`}
+                  aria-label={`Open content ${article.title}`}
                   className={`w-full text-left p-3 rounded-lg border transition ${selected?.id === article.id ? "border-yellow-500/40 bg-yellow-500/10" : "border-white/10 bg-black/20 hover:border-white/20"}`}
                 >
                   <div className="text-sm font-bold uppercase tracking-wide line-clamp-1">{article.title}</div>
-                  <div className="text-[10px] text-neutral-500 mt-1 uppercase tracking-widest">{article.category} • {article.published ? "Published" : "Draft"}</div>
+                  <div className="text-[10px] text-neutral-500 mt-1 uppercase tracking-widest">{article.category} • {article.audience === "public" ? "Public" : "Internal"} • {article.published ? "Published" : "Draft"}</div>
                 </button>
               ))}
-              {filtered.length === 0 && <div className="text-xs text-neutral-600 uppercase tracking-widest p-3">No articles found.</div>}
+              {filtered.length === 0 && <div className="text-xs text-neutral-600 uppercase tracking-widest p-3">No content found.</div>}
             </div>
           </aside>
 
@@ -428,29 +436,38 @@ export default function AdminKnowledgePage() {
               <input
                 value={form.title}
                 onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder="Article title"
-                aria-label="Article title"
+                placeholder="Content title"
+                aria-label="Content title"
                 className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
               />
               <input
                 value={form.slug}
                 onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
                 placeholder="Slug (optional)"
-                aria-label="Article slug"
+                aria-label="Content slug"
                 className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
               />
               <input
                 value={form.category}
                 onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
                 placeholder="Category (rules, commands, procedures...)"
-                aria-label="Article category"
+                aria-label="Content category"
                 className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
               />
+              <select
+                value={form.audience}
+                onChange={(e) => setForm((prev) => ({ ...prev, audience: e.target.value === "public" ? "public" : "internal" }))}
+                aria-label="Post target"
+                className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
+              >
+                <option value="internal">Post to: Admin Knowledge Page (Staff/Internal)</option>
+                <option value="public">Post to: Public Announcement Page</option>
+              </select>
               <input
                 value={form.summary}
                 onChange={(e) => setForm((prev) => ({ ...prev, summary: e.target.value }))}
                 placeholder="Short summary"
-                aria-label="Article summary"
+                aria-label="Content summary"
                 className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
               />
             </div>
@@ -458,7 +475,7 @@ export default function AdminKnowledgePage() {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-[10px] uppercase tracking-widest text-neutral-500">
               <span>{wordCount} words</span>
               <span>{readingTimeMins} min read</span>
-              {selected?.updated_at ? <span>Updated {new Date(selected.updated_at).toLocaleDateString()}</span> : <span>Unsaved Article</span>}
+              {selected?.updated_at ? <span>Updated {new Date(selected.updated_at).toLocaleDateString()}</span> : <span>Unsaved Content</span>}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -486,7 +503,7 @@ export default function AdminKnowledgePage() {
               >
                 <Eye size={12} className="inline mr-2" /> Preview
               </button>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-widest">Cmd/Ctrl + S to save</span>
+              <span className="text-[10px] text-neutral-500 uppercase tracking-widest">Press Ctrl/Cmd + S to save</span>
             </div>
 
             {editorTab === "write" ? (
@@ -494,8 +511,8 @@ export default function AdminKnowledgePage() {
                 ref={textAreaRef}
                 value={form.content}
                 onChange={(e) => setForm((prev) => ({ ...prev, content: e.target.value }))}
-                placeholder="Write article content here (markdown supported)."
-                aria-label="Article content"
+                placeholder="Write content here (markdown supported)."
+                aria-label="Content body"
                 className="w-full min-h-[360px] md:min-h-[440px] bg-black/40 border border-white/10 rounded-lg px-3 py-3 text-sm outline-none focus:border-yellow-500/40"
               />
             ) : (
@@ -511,7 +528,7 @@ export default function AdminKnowledgePage() {
                   checked={form.published}
                   onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
                 />
-                Published (visible to staff)
+                Published ({form.audience === "public" ? "visible on public announcements" : "visible to staff"})
               </label>
 
               <div className="flex items-center gap-2">
@@ -546,7 +563,7 @@ export default function AdminKnowledgePage() {
                   disabled={saving || deleting}
                   className="px-4 py-2 border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 rounded-lg text-xs uppercase tracking-widest flex items-center gap-2 disabled:opacity-50 min-h-10"
                 >
-                  <Save size={14} /> {saving ? "Saving..." : selected?.id ? "Update Article" : "Create Article"}
+                  <Save size={14} /> {saving ? "Saving..." : selected?.id ? "Update Content" : "Create Content"}
                 </button>
               </div>
             </div>
@@ -558,7 +575,7 @@ export default function AdminKnowledgePage() {
                   checked={form.published}
                   onChange={(e) => setForm((prev) => ({ ...prev, published: e.target.checked }))}
                 />
-                Published (visible to staff)
+                Published ({form.audience === "public" ? "visible on public announcements" : "visible to staff"})
               </label>
               <div className="flex items-center gap-2">
                 {selected?.slug && (

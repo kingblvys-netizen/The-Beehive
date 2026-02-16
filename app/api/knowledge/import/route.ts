@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 type BulkSection = {
   title: string;
   category: string;
+  audience: "internal" | "public";
   summary: string;
   content: string;
 };
@@ -29,12 +30,16 @@ function normalizeCategory(input: string, fallback: string) {
   return raw.replace(/[^a-z0-9-\s]/g, "").replace(/\s+/g, "-") || "general";
 }
 
+function normalizeAudience(input: string): "internal" | "public" {
+  return String(input || "").trim().toLowerCase() === "public" ? "public" : "internal";
+}
+
 function makeSummary(content: string) {
   const clean = content.replace(/[#>*_`\[\]\-]/g, " ").replace(/\s+/g, " ").trim();
   return clean.slice(0, 180);
 }
 
-function parseBulkSections(rawText: string, defaultCategory: string): BulkSection[] {
+function parseBulkSections(rawText: string, defaultCategory: string, defaultAudience: "internal" | "public"): BulkSection[] {
   const normalized = rawText.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
 
@@ -48,11 +53,12 @@ function parseBulkSections(rawText: string, defaultCategory: string): BulkSectio
       const lines = chunk.split("\n");
       const firstLine = lines[0] || "";
       const headingMatch = firstLine.match(/^#{1,3}\s+(.+)$/);
-      const title = (headingMatch?.[1] || firstLine || `Imported Article ${index + 1}`).trim();
+      const title = (headingMatch?.[1] || firstLine || `Imported Content ${index + 1}`).trim();
       const body = headingMatch ? lines.slice(1).join("\n").trim() : lines.slice(1).join("\n").trim() || chunk;
       return {
         title,
         category: normalizeCategory(defaultCategory, "general"),
+        audience: defaultAudience,
         summary: makeSummary(body),
         content: body || chunk,
       };
@@ -64,11 +70,12 @@ function parseBulkSections(rawText: string, defaultCategory: string): BulkSectio
     return headingSplit.map((chunk, index) => {
       const lines = chunk.split("\n");
       const first = lines[0] || "";
-      const heading = first.match(/^#{1,3}\s+(.+)$/)?.[1]?.trim() || `Imported Article ${index + 1}`;
+      const heading = first.match(/^#{1,3}\s+(.+)$/)?.[1]?.trim() || `Imported Content ${index + 1}`;
       const body = lines.slice(1).join("\n").trim();
       return {
         title: heading,
         category: normalizeCategory(defaultCategory, "general"),
+        audience: defaultAudience,
         summary: makeSummary(body),
         content: body || chunk,
       };
@@ -79,6 +86,7 @@ function parseBulkSections(rawText: string, defaultCategory: string): BulkSectio
     {
       title: "Imported Handbook",
       category: normalizeCategory(defaultCategory, "general"),
+      audience: defaultAudience,
       summary: makeSummary(normalized),
       content: normalized,
     },
@@ -89,7 +97,7 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const access = await getSessionAccessInfo(session);
-    if (!session || !access.canAccessAdmin) {
+    if (!session || !access.canManageKnowledge) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -98,31 +106,32 @@ export async function POST(req: Request) {
     const body = await req.json();
     const rawText = String(body?.rawText || "").trim();
     const defaultCategory = String(body?.category || "general");
+    const audience = normalizeAudience(String(body?.audience || "internal"));
     const published = Boolean(body?.published);
 
     if (!rawText) {
       return NextResponse.json({ error: "No import content provided" }, { status: 400 });
     }
 
-    const sections = parseBulkSections(rawText, defaultCategory).filter((item) => item.content.trim() && item.title.trim());
+    const sections = parseBulkSections(rawText, defaultCategory, audience).filter((item) => item.content.trim() && item.title.trim());
 
     if (sections.length === 0) {
       return NextResponse.json({ error: "No valid sections found" }, { status: 400 });
     }
 
     const actor = getSessionAdminId(session);
-    const created: Array<{ id: number; slug: string; title: string; category: string }> = [];
+    const created: Array<{ id: number; slug: string; title: string; category: string; audience: "internal" | "public" }> = [];
 
     for (const section of sections) {
       const slug = await createUniqueSlug(section.title);
       const result = await sql`
-        INSERT INTO knowledge_articles (slug, title, category, summary, content, published, created_by, updated_by)
-        VALUES (${slug}, ${section.title}, ${section.category}, ${section.summary || null}, ${section.content}, ${published}, ${actor}, ${actor})
-        RETURNING id, slug, title, category
+        INSERT INTO knowledge_articles (slug, title, category, audience, summary, content, published, created_by, updated_by)
+        VALUES (${slug}, ${section.title}, ${section.category}, ${section.audience}, ${section.summary || null}, ${section.content}, ${published}, ${actor}, ${actor})
+        RETURNING id, slug, title, category, audience
       `;
 
       if (result.rows[0]) {
-        created.push(result.rows[0] as { id: number; slug: string; title: string; category: string });
+        created.push(result.rows[0] as { id: number; slug: string; title: string; category: string; audience: "internal" | "public" });
       }
     }
 
@@ -132,7 +141,7 @@ export async function POST(req: Request) {
       actorRole: access.role,
       area: "knowledge",
       action: "bulk-import",
-      metadata: { importedCount: created.length, category: defaultCategory, published },
+      metadata: { importedCount: created.length, category: defaultCategory, audience, published },
     });
 
     return NextResponse.json({

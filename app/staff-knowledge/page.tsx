@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSession, signIn } from "next-auth/react";
 import { BookOpen, ChevronLeft, Search } from "lucide-react";
 
 type Article = {
@@ -13,8 +14,10 @@ type Article = {
   updated_at: string;
 };
 
-export default function KnowledgeIndexPage() {
+export default function StaffKnowledgeIndexPage() {
+  const { data: session, status } = useSession();
   const [articles, setArticles] = useState<Article[]>([]);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -23,20 +26,24 @@ export default function KnowledgeIndexPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/knowledge/articles?audience=public", { cache: "no-store" });
+        const res = await fetch("/api/knowledge/articles?audience=internal", { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (res.status === 403 || res.status === 401) setAccessDenied(true);
           setArticles([]);
           return;
         }
+        setAccessDenied(false);
         setArticles(Array.isArray(data?.articles) ? data.articles : []);
       } finally {
         setLoading(false);
       }
     };
 
-    load();
-  }, []);
+    if (status === "authenticated") {
+      load();
+    }
+  }, [status]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -52,8 +59,32 @@ export default function KnowledgeIndexPage() {
     return ["all", ...values];
   }, [articles]);
 
-  if (loading) {
-    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading announcements...</div>;
+  if (status === "loading" || loading) {
+    return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading staff knowledge...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <h1 className="text-2xl font-black uppercase tracking-widest mb-3">Staff Knowledge</h1>
+          <p className="text-neutral-400 mb-5">Sign in to access staff documentation.</p>
+          <button onClick={() => signIn("discord")} className="px-4 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300">Sign in with Discord</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <h1 className="text-2xl font-black uppercase tracking-widest mb-3">Staff Knowledge</h1>
+          <p className="text-neutral-400 mb-5">You are signed in, but not on the Staff/Managers access list yet.</p>
+          <p className="text-xs uppercase tracking-widest text-yellow-400">Ask a Manager/Admin to grant staff access in Admin Panel.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -63,11 +94,14 @@ export default function KnowledgeIndexPage() {
           <ChevronLeft size={14} /> Back to Home
         </Link>
 
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest flex items-center gap-3">
-            <BookOpen className="text-yellow-500" size={22} /> News & Announcements
-          </h1>
-          <p className="text-neutral-500 text-xs uppercase tracking-widest mt-2">Latest updates for all visitors and community members</p>
+        <div className="mb-8 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest flex items-center gap-3">
+              <BookOpen className="text-yellow-500" size={22} /> Staff Knowledge
+            </h1>
+            <p className="text-neutral-500 text-xs uppercase tracking-widest mt-2">Internal docs for staff and managers</p>
+          </div>
+          <Link href="/knowledge" className="px-3 py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest hover:border-yellow-500/40 min-h-10">Public Announcements</Link>
         </div>
 
         <div className="relative mb-5">
@@ -75,8 +109,8 @@ export default function KnowledgeIndexPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search announcements"
-            aria-label="Search announcements"
+            placeholder="Search staff knowledge"
+            aria-label="Search staff knowledge"
             className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-3 py-3.5 text-sm outline-none focus:border-yellow-500/40"
           />
         </div>
@@ -101,7 +135,7 @@ export default function KnowledgeIndexPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filtered.map((article) => (
             <Link
-              href={`/knowledge/${article.slug}`}
+              href={`/staff-knowledge/${article.slug}`}
               key={article.id}
               className="block border border-white/10 bg-black/30 rounded-xl p-4 hover:border-yellow-500/40 transition-colors min-h-[150px]"
             >
@@ -116,7 +150,7 @@ export default function KnowledgeIndexPage() {
         </div>
 
         {filtered.length === 0 && (
-          <div className="text-xs text-neutral-600 uppercase tracking-widest mt-12">No announcements published yet.</div>
+          <div className="text-xs text-neutral-600 uppercase tracking-widest mt-12">No internal articles published yet.</div>
         )}
       </div>
     </div>

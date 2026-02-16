@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 type SessionUser = {
   id?: string;
   discordId?: string;
+  name?: string | null;
 };
 
 function sanitizeAnswersPayload(raw: unknown) {
@@ -40,8 +41,7 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user as SessionUser | undefined;
-    const discordId = String(user?.discordId || user?.id || "").trim();
-    if (!discordId) {
+    if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     const existing = await sql`
       SELECT id, status
       FROM applications
-      WHERE discord_id = ${discordId}
+      WHERE discord_id = ${String(user.id)}
         AND (role_id = ${String(roleId)} OR role_title = ${String(roleTitle)})
         AND status <> 'reset'
       ORDER BY created_at DESC
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
     const result = await sql`
       INSERT INTO applications (discord_id, username, role_id, role_title, answers, status)
-      VALUES (${discordId}, ${""}, ${String(roleId)}, ${String(roleTitle)}, ${JSON.stringify(safeAnswers)}, 'pending')
+      VALUES (${String(user.id)}, ${String(user.name ?? "Unknown")}, ${String(roleId)}, ${String(roleTitle)}, ${JSON.stringify(safeAnswers)}, 'pending')
       RETURNING id
     `;
 
@@ -90,8 +90,7 @@ export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user as SessionUser | undefined;
-    const discordId = String(user?.discordId || user?.id || "").trim();
-    if (!discordId) {
+    if (!user?.id) {
       return NextResponse.json({ applied: false, appliedRoles: [] });
     }
 
@@ -103,7 +102,7 @@ export async function GET(req: Request) {
       const existing = await sql`
         SELECT id, status
         FROM applications
-        WHERE discord_id = ${discordId}
+        WHERE discord_id = ${String(user.id)}
           AND role_id = ${String(roleId)}
           AND status <> 'reset'
         ORDER BY created_at DESC
@@ -125,7 +124,7 @@ export async function GET(req: Request) {
         id,
         created_at
       FROM applications
-      WHERE discord_id = ${discordId}
+      WHERE discord_id = ${String(user.id)}
         AND role_id IS NOT NULL
         AND status <> 'reset'
       ORDER BY role_id, created_at DESC

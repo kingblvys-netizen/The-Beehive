@@ -21,7 +21,7 @@ type LogRow = {
 export default function AdminLogsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
+  const [canViewLogs, setCanViewLogs] = useState<boolean | null>(null);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -30,9 +30,9 @@ export default function AdminLogsPage() {
     try {
       const res = await fetch("/api/admin/access/me", { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
-      setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+      setCanViewLogs(Boolean(data?.canViewLogs));
     } catch {
-      setCanAccessAdmin(false);
+      setCanViewLogs(false);
     }
   };
 
@@ -54,16 +54,16 @@ export default function AdminLogsPage() {
   useEffect(() => {
     if (status === "authenticated") loadAccess();
     if (status === "unauthenticated") {
-      setCanAccessAdmin(false);
+      setCanViewLogs(false);
       setLoading(false);
     }
   }, [status]);
 
   useEffect(() => {
-    if (status === "authenticated" && canAccessAdmin) {
+    if (status === "authenticated" && canViewLogs) {
       loadLogs();
     }
-  }, [status, canAccessAdmin]);
+  }, [status, canViewLogs]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -73,7 +73,7 @@ export default function AdminLogsPage() {
     );
   }, [logs, query]);
 
-  if (status === "loading" || canAccessAdmin === null || loading) {
+  if (status === "loading" || canViewLogs === null || loading) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
         <RefreshCw className="text-yellow-500 animate-spin" size={28} />
@@ -81,7 +81,7 @@ export default function AdminLogsPage() {
     );
   }
 
-  if (!session || !canAccessAdmin) {
+  if (!session || !canViewLogs) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
         <div className="text-center">

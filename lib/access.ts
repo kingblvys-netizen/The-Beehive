@@ -8,8 +8,12 @@ export type AccessInfo = {
   discordId: string;
   role: AccessRole | null;
   source: "bootstrap" | "db" | "none";
+  canOpenAdminPanel: boolean;
   canAccessAdmin: boolean;
   canAccessKnowledge: boolean;
+  canManageKnowledge: boolean;
+  canViewLogs: boolean;
+  canManageAccessControl: boolean;
 };
 
 type AccessRow = {
@@ -76,8 +80,12 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
       discordId: "",
       role: null,
       source: "none",
+      canOpenAdminPanel: false,
       canAccessAdmin: false,
       canAccessKnowledge: false,
+      canManageKnowledge: false,
+      canViewLogs: false,
+      canManageAccessControl: false,
     };
   }
 
@@ -86,8 +94,12 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
       discordId,
       role: "manager",
       source: "bootstrap",
+      canOpenAdminPanel: true,
       canAccessAdmin: true,
       canAccessKnowledge: true,
+      canManageKnowledge: true,
+      canViewLogs: true,
+      canManageAccessControl: true,
     };
   }
 
@@ -97,8 +109,12 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
       discordId,
       role: null,
       source: "none",
+      canOpenAdminPanel: false,
       canAccessAdmin: false,
       canAccessKnowledge: false,
+      canManageKnowledge: false,
+      canViewLogs: false,
+      canManageAccessControl: false,
     };
   }
 
@@ -106,8 +122,12 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
     discordId,
     role,
     source: "db",
+    canOpenAdminPanel: role === "manager" || role === "staff",
     canAccessAdmin: role === "manager",
     canAccessKnowledge: role === "manager" || role === "staff",
+    canManageKnowledge: role === "manager",
+    canViewLogs: role === "manager",
+    canManageAccessControl: role === "manager",
   };
 }
 

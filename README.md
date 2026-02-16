@@ -20,38 +20,43 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Knowledge Base (In-Platform Docs)
+## Knowledge + Announcements
 
-The app now includes an internal Knowledge Base so your team can manage docs directly in-platform.
+The app now supports two content destinations managed from one editor:
 
-- Staff reader: `/knowledge`
-- Article page: `/knowledge/[slug]`
-- Admin editor: `/admin/knowledge`
+- Public announcements feed: `/knowledge`
+- Public announcement page: `/knowledge/[slug]`
+- Staff internal docs: `/staff-knowledge`
+- Staff internal document page: `/staff-knowledge/[slug]`
+- Manager editor: `/admin/knowledge`
 
 ### Capabilities
 
-- Create, edit, publish/unpublish, and delete articles
+- Create, edit, publish/unpublish, and delete content
+- Choose post target per item: **Admin Knowledge Page (Staff/Internal)** or **Public Announcement Page**
 - Organize with categories (rules, commands, procedures, etc.)
-- Search across article metadata/content
+- Search across content metadata/body
 - Markdown authoring with live preview
 - One-click templates (Rules, Commands, Procedure, Mobile Quick Guide)
-- Auto-save drafts, duplicate article workflow, and copy-link sharing
+- Auto-save drafts, duplicate content workflow, and copy-link sharing
 - Mobile-friendly editing/reading controls and touch targets
 - Access control:
-	- Staff and higher can read Knowledge Base content
-	- Managers/Admin can create/edit/delete content
+	- Everyone can read **public announcements** (`/knowledge`)
+	- Staff and Managers/Admin can read **internal staff docs** (`/staff-knowledge`)
+	- Managers/Admin can create/edit/delete content and manage destinations
+	- Staff can enter Admin Panel in read-only mode for application review + staff knowledge access
 	- Access is managed in Admin Panel via Discord ID role assignment (Staff/Manager)
 	- Access actions are tracked in admin activity logs (Access Audit)
 
 ### Storage
 
-Articles are stored in a `knowledge_articles` PostgreSQL table. The table is auto-created on first Knowledge Base API access.
+Content is stored in a `knowledge_articles` PostgreSQL table. The table is auto-created on first knowledge API access.
 
 ### Data Minimization
 
-- Applications store Discord ID as applicant identity; Discord username is not persisted.
+- Applications store only Discord user ID, Discord username, role metadata, and application answers.
 - Identity-like fields in submitted `answers` are stripped server-side to avoid duplicated personal data storage.
-- Knowledge Base content is stored with admin author/update identifiers for auditability.
+- Knowledge content is stored with admin author/update identifiers for auditability.
 
 ### Retention Cleanup
 
@@ -80,6 +85,19 @@ Suggested Vercel Cron setup:
 - Create `CLEANUP_CRON_SECRET` in Vercel env vars.
 - Schedule a cron job (for example weekly).
 - Call `POST /api/admin/cleanup-applications` with `Authorization: Bearer <CLEANUP_CRON_SECRET>`.
+
+## Release Notes (Feb 2026)
+
+- Added role-based access split:
+	- Staff can open the Admin Panel in read-only mode.
+	- Managers/Admin retain full management controls.
+- Separated content destinations:
+	- Public announcements for everyone at `/knowledge`.
+	- Internal staff docs at `/staff-knowledge`.
+- Updated editor and import flow so destination/audience is explicit per post.
+- Added and standardized back navigation for knowledge/announcement pages.
+- Completed end-to-end copy polish for public, staff, admin, API messages, and docs.
+- Verified final state with clean ESLint runs.
 
 ## Learn More
 

@@ -27,10 +27,10 @@ export default function Home() {
   const [submittedRoles, setSubmittedRoles] = useState<Record<string, string>>({});
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
   const [enableCursorFx, setEnableCursorFx] = useState(false);
-  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  const [canOpenAdminPanel, setCanOpenAdminPanel] = useState(false);
   const [canAccessKnowledge, setCanAccessKnowledge] = useState(false);
 
-  // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
+  // --- 1. CURSOR EFFECTS ---
   const mouseX = useMotionValue(-100); 
   const mouseY = useMotionValue(-100);
   const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 }; 
@@ -59,7 +59,7 @@ export default function Home() {
     };
   }, []);
 
-  // --- 2. LIVE ROLE & USER SYNC ENGINE ---
+  // --- 2. ROLE + USER DATA ---
   useEffect(() => {
     const loadRoleSettings = async () => {
       try {
@@ -103,7 +103,7 @@ export default function Home() {
 
     const loadAccess = async () => {
       if (status !== "authenticated") {
-        setCanAccessAdmin(false);
+        setCanOpenAdminPanel(false);
         setCanAccessKnowledge(false);
         return;
       }
@@ -111,10 +111,10 @@ export default function Home() {
       try {
         const res = await fetch("/api/admin/access/me", { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
-        setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+        setCanOpenAdminPanel(Boolean(data?.canOpenAdminPanel));
         setCanAccessKnowledge(Boolean(data?.canAccessKnowledge));
       } catch {
-        setCanAccessAdmin(false);
+        setCanOpenAdminPanel(false);
         setCanAccessKnowledge(false);
       }
     };
@@ -213,33 +213,37 @@ export default function Home() {
           </Link>
           
           <div className="flex items-center gap-6">
+            <Link
+              href="/knowledge"
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+              className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+            >
+              <BookOpen size={16} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Announcements</span>
+            </Link>
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
                 {canAccessKnowledge ? (
                   <Link
-                    href="/knowledge"
+                    href="/staff-knowledge"
                     onMouseEnter={() => setIsHovering(true)}
                     onMouseLeave={() => setIsHovering(false)}
-                    className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+                    className="flex items-center gap-2 px-5 py-2 bg-blue-500/10 text-blue-300 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-all"
                   >
                     <BookOpen size={16} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Base</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Staff KB</span>
                   </Link>
-                ) : (
-                  <div className="flex items-center gap-2 px-5 py-2 bg-white/5 text-neutral-500 border border-white/10 rounded-lg">
-                    <Lock size={14} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Locked</span>
-                  </div>
-                )}
-                {canAccessAdmin && (
+                ) : null}
+                {canOpenAdminPanel && (
                   <Link href="/admin" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} 
                     className="flex items-center gap-2 px-5 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-[0_0_15px_#ef444433] group">
                     <Shield size={16} className="group-hover:animate-spin-slow" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Command Hub</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Admin Panel</span>
                   </Link>
                 )}
                 <div className="hidden md:flex flex-col items-end border-l border-white/10 pl-4">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Neural Agent</span>
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Signed in as</span>
                   <span className="text-xs font-black text-white uppercase italic">{session.user?.name}</span>
                 </div>
                 <button onClick={() => signOut()} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} className="text-neutral-600 hover:text-white transition p-2">
@@ -249,7 +253,7 @@ export default function Home() {
             ) : (
               <button onClick={() => signIn('discord')} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}
                 className="bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-yellow-300 transition-all shadow-[0_0_20px_#FACC1566]">
-                Neural Link via Discord
+                Sign in with Discord
               </button>
             )}
           </div>
@@ -264,22 +268,22 @@ export default function Home() {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-yellow-400/5 blur-[160px] pointer-events-none rounded-full" />
             <div className="inline-flex items-center gap-2 mb-8 px-5 py-2 rounded-full border border-yellow-400/20 bg-yellow-400/5 backdrop-blur-md">
               <Wifi size={12} className="text-yellow-500 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-[0.5em] text-yellow-400">Recruitment Protocol // {SITE_VERSION}</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.5em] text-yellow-400">Recruitment Portal // {SITE_VERSION}</span>
             </div>
             <h1 className="text-6xl md:text-8xl font-black uppercase tracking-tighter mb-8 leading-none text-white drop-shadow-2xl">
               Build the <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-yellow-200 to-yellow-600">Hive</span>
             </h1>
             <p className="text-neutral-500 font-bold max-w-2xl mx-auto text-lg leading-relaxed uppercase tracking-widest italic opacity-80">
-              Scouting dedicated units for development, moderation, and systemic innovation.
+              Open roles for moderation, leadership, and community support.
             </p>
           </motion.div>
           
-          {/* --- TACTICAL STATS (SCALED DOWN) --- */}
+          {/* --- QUICK STATS --- */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-24 max-w-5xl mx-auto">
              {[
-               { icon: Users, label: "Total Recruits", val: "4k+", color: "text-neutral-500" },
-               { icon: Activity, label: "Units Active", val: "400+", color: "text-green-500", pulse: true },
-               { icon: Zap, label: "Core Stability", val: "99.9%", color: "text-yellow-500" }
+               { icon: Users, label: "Community Size", val: "4k+", color: "text-neutral-500" },
+               { icon: Activity, label: "Active Members", val: "400+", color: "text-green-500", pulse: true },
+               { icon: Zap, label: "Platform Uptime", val: "99.9%", color: "text-yellow-500" }
              ].map((stat, i) => (
                <div key={i} className="bg-neutral-900/40 border border-white/5 p-6 rounded-3xl backdrop-blur-md hover:border-white/10 transition-all group shadow-inner">
                  <div className={`p-3 bg-black/40 border border-white/5 rounded-2xl mb-4 inline-block ${stat.color} group-hover:shadow-[0_0_15px_currentColor] transition-all`}><stat.icon size={22} /></div>
@@ -299,7 +303,7 @@ export default function Home() {
              ))}
           </motion.div>
 
-          {/* --- MISSION ROLES --- */}
+          {/* --- OPEN ROLES --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {liveRoles.map((role) => {
               const submittedStatus = submittedRoles[role.id];
@@ -356,7 +360,7 @@ export default function Home() {
                       {role.title}
                     </h3>
                     <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-600 mb-8 flex items-center gap-2">
-                       <Database size={12} className="text-yellow-500/40" /> Commitment: {role.commitment}
+                       <Database size={12} className="text-yellow-500/40" /> Time Commitment: {role.commitment}
                     </div>
 
                     <p className="text-neutral-500 text-sm mb-12 leading-relaxed font-bold uppercase tracking-tight line-clamp-3 min-h-[60px] border-l-2 border-white/5 pl-6 group-hover:border-yellow-400/40 transition-colors">
@@ -369,12 +373,12 @@ export default function Home() {
                       </div>
                     ) : !role.isOpen ? (
                       <div className="w-full py-5 bg-white/5 border border-white/5 rounded-2xl text-center text-[10px] font-black uppercase tracking-[0.3em] text-neutral-700 italic">
-                        Node Offline
+                        Role Closed
                       </div>
                     ) : (
                       <Link href={`/apply/${role.id}`} className="block w-full">
                         <div className="group/btn relative w-full flex items-center justify-center py-5 bg-white/[0.04] border border-white/5 hover:bg-yellow-400 text-neutral-400 hover:text-black font-black text-[11px] uppercase tracking-[0.4em] rounded-2xl transition-all duration-300">
-                          <span className="relative z-10 flex items-center gap-2 italic">Initiate Handshake <ChevronRight size={16} className="group-hover/btn:translate-x-1 transition-transform" /></span>
+                          <span className="relative z-10 flex items-center gap-2 italic">Apply Now <ChevronRight size={16} className="group-hover/btn:translate-x-1 transition-transform" /></span>
                         </div>
                       </Link>
                     )}
@@ -391,14 +395,14 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-10">
           <div className="flex items-center gap-4 opacity-40 hover:opacity-100 transition-opacity duration-700 group cursor-default">
             <Hexagon className="text-yellow-400 fill-yellow-400 group-hover:rotate-90 transition-transform duration-1000" size={24} />
-            <span className="font-black uppercase tracking-[0.3em] text-[11px] text-white italic">Global Hive Defense // 2026</span>
+            <span className="font-black uppercase tracking-[0.3em] text-[11px] text-white italic">The Beehive Careers // 2026</span>
           </div>
 
           <div className="flex items-center gap-12">
             {/* CORE STATUS LINK */}
             <Link href="/status" className="text-[10px] font-black uppercase text-neutral-600 hover:text-green-400 transition-all flex items-center gap-3 group">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse group-hover:shadow-[0_0_10px_#22c55e]" /> 
-              System Core Integrity
+              System Status
             </Link>
             
             <div className="flex items-center gap-8 border-l border-white/10 pl-12">

@@ -16,7 +16,7 @@ import { APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
 type ApplicationRecord = {
   id: number;
   discord_id: string;
-  username?: string | null;
+  username: string;
   role_id?: string;
   role_title: string;
   status: string;
@@ -46,8 +46,12 @@ type ApplicationsPayload = {
 type AccessMePayload = {
   authenticated?: boolean;
   role?: "manager" | "staff" | null;
+  canOpenAdminPanel?: boolean;
   canAccessAdmin?: boolean;
   canAccessKnowledge?: boolean;
+  canManageKnowledge?: boolean;
+  canViewLogs?: boolean;
+  canManageAccessControl?: boolean;
   discordId?: string;
 };
 
@@ -97,7 +101,11 @@ export default function AdminDashboard() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string>("");
   const [enableCursorFx, setEnableCursorFx] = useState(false);
-  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
+  const [canOpenAdminPanel, setCanOpenAdminPanel] = useState<boolean | null>(null);
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  const [canManageKnowledge, setCanManageKnowledge] = useState(false);
+  const [canViewLogs, setCanViewLogs] = useState(false);
+  const [canManageAccessControl, setCanManageAccessControl] = useState(false);
   const [accessEntries, setAccessEntries] = useState<AccessEntry[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessDiscordId, setNewAccessDiscordId] = useState("");
@@ -188,9 +196,17 @@ export default function AdminDashboard() {
     try {
       const res = await fetch('/api/admin/access/me', { cache: 'no-store' });
       const data = (await res.json().catch(() => ({}))) as AccessMePayload;
+      setCanOpenAdminPanel(Boolean(data?.canOpenAdminPanel));
       setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+      setCanManageKnowledge(Boolean(data?.canManageKnowledge));
+      setCanViewLogs(Boolean(data?.canViewLogs));
+      setCanManageAccessControl(Boolean(data?.canManageAccessControl));
     } catch {
+      setCanOpenAdminPanel(false);
       setCanAccessAdmin(false);
+      setCanManageKnowledge(false);
+      setCanViewLogs(false);
+      setCanManageAccessControl(false);
     }
   };
 
@@ -338,28 +354,34 @@ export default function AdminDashboard() {
       resolveAccess();
     }
     if (status === "unauthenticated") {
+      setCanOpenAdminPanel(false);
       setCanAccessAdmin(false);
+      setCanManageKnowledge(false);
+      setCanViewLogs(false);
+      setCanManageAccessControl(false);
       setLoading(false);
     }
   }, [status]);
 
   useEffect(() => {
-    if (status === "authenticated" && canAccessAdmin) {
+    if (status === "authenticated" && canManageAccessControl) {
       loadAccessEntries();
+    }
+    if (status === "authenticated" && canViewLogs) {
       loadAccessAudit();
     }
-    if (status === "authenticated" && canAccessAdmin === false) {
+    if (status === "authenticated" && canOpenAdminPanel === false) {
       setLoading(false);
     }
-  }, [status, canAccessAdmin]);
+  }, [status, canOpenAdminPanel, canManageAccessControl, canViewLogs]);
 
   useEffect(() => {
-    if (status === "authenticated" && canAccessAdmin) {
+    if (status === "authenticated" && canOpenAdminPanel) {
       fetchData();
     }
-  }, [status, canAccessAdmin, fetchData]);
+  }, [status, canOpenAdminPanel, fetchData]);
 
-  // --- 3. TACTICAL HUD STATS ---
+  // --- 3. DASHBOARD STATS ---
   const stats = useMemo(() => {
     const pending = applications.filter((app) => app.status === 'pending').length;
     const approved = applications.filter((app) => app.status === 'approved').length;
@@ -495,14 +517,14 @@ export default function AdminDashboard() {
   const filteredApps = applications;
 
   // ACCESS GATE
-  if (status === "loading" || canAccessAdmin === null || loading) return (
+  if (status === "loading" || canOpenAdminPanel === null || loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
       <RefreshCw className="text-yellow-500 animate-spin" size={48} />
-      <span className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Syncing Tactical Data...</span>
+      <span className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Loading admin data...</span>
     </div>
   );
 
-  if (!session || !canAccessAdmin) {
+  if (!session || !canOpenAdminPanel) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
         <Shield size={64} className="text-red-500 mb-6 animate-pulse" />
@@ -527,26 +549,37 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/')}>
             <Hexagon className="text-yellow-500 fill-yellow-500" size={24} />
-            <h1 className="text-lg font-black tracking-widest uppercase italic">Hive Command Hub</h1>
+            <h1 className="text-lg font-black tracking-widest uppercase italic">Admin Panel</h1>
           </div>
           <div className="flex items-center gap-6">
-            <Link
-              href="/admin/knowledge"
-              className="px-3 py-2 border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-yellow-500/20"
-            >
-              <BookOpen size={12} /> Knowledge Base
-            </Link>
-            <Link
-              href="/admin/logs"
-              className="px-3 py-2 border border-white/15 bg-white/5 text-neutral-200 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:border-yellow-500/30"
-            >
-              <ClipboardList size={12} /> Activity Logs
-            </Link>
+            {canManageKnowledge ? (
+              <Link
+                href="/admin/knowledge"
+                className="px-3 py-2 border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-yellow-500/20"
+              >
+                <BookOpen size={12} /> Knowledge Editor
+              </Link>
+            ) : (
+              <Link
+                href="/staff-knowledge"
+                className="px-3 py-2 border border-blue-500/30 bg-blue-500/10 text-blue-300 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-500/20"
+              >
+                <BookOpen size={12} /> Staff Knowledge
+              </Link>
+            )}
+            {canViewLogs && (
+              <Link
+                href="/admin/logs"
+                className="px-3 py-2 border border-white/15 bg-white/5 text-neutral-200 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:border-yellow-500/30"
+              >
+                <ClipboardList size={12} /> Activity Logs
+              </Link>
+            )}
             <button
               onClick={() => {
                 fetchData();
-                loadAccessEntries();
-                loadAccessAudit();
+                if (canManageAccessControl) loadAccessEntries();
+                if (canViewLogs) loadAccessAudit();
               }}
               className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors"
             >
@@ -564,35 +597,37 @@ export default function AdminDashboard() {
 
       <main className="max-w-7xl mx-auto px-6 py-12">
         
-        {/* --- TACTICAL HUD --- */}
+        {/* --- DASHBOARD SUMMARY --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4 backdrop-blur-sm">
             <Activity className="text-yellow-500" size={32} />
             <div>
               <div className="text-2xl font-black">{stats.pending}</div>
-              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Pending Intel</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Pending Applications</div>
             </div>
           </div>
           <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4 backdrop-blur-sm">
             <PieChart className="text-green-500" size={32} />
             <div>
               <div className="text-2xl font-black">{stats.successRate}%</div>
-              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Approval Rating</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Approval Rate</div>
             </div>
           </div>
           <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4 backdrop-blur-sm">
             <Target className="text-blue-500" size={32} />
             <div>
               <div className="text-lg font-black truncate max-w-[150px] uppercase">{stats.mostPopular}</div>
-              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">High Interest Role</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Most Applied Role</div>
             </div>
           </div>
         </div>
 
+        {canAccessAdmin ? (
+        <>
         {/* RECRUITMENT CHANNEL CONTROLS */}
         <div className="mb-12">
           <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-600 mb-6 flex items-center gap-2">
-            <Power size={12} /> Recruitment Channels (Lock/Unlock)
+            <Power size={12} /> Role Availability (Open/Locked)
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {staticRoleData.map(role => {
@@ -612,7 +647,7 @@ export default function AdminDashboard() {
         {/* DATA RETENTION CLEANUP */}
         <div className="mb-12 bg-neutral-900/30 border border-white/5 rounded-2xl p-5 md:p-6 backdrop-blur-md">
           <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4 flex items-center gap-2">
-            <AlertTriangle size={12} /> Data Retention Cleanup
+            <AlertTriangle size={12} /> Old Application Cleanup
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -679,7 +714,7 @@ export default function AdminDashboard() {
             <Shield size={12} /> Staff & Manager Access Control
           </h3>
           <p className="text-xs text-neutral-400 mb-4">
-            Staff can read Knowledge Base only. Managers/Admin can access the Admin Panel and create/edit Knowledge content.
+            Staff can read Staff Knowledge only. Managers/Admin can access the Admin Panel and create/edit knowledge content.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -781,6 +816,13 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        </>
+        ) : (
+          <div className="mb-10 border border-blue-500/20 bg-blue-500/5 rounded-2xl p-4 md:p-5">
+            <div className="text-blue-300 text-xs uppercase tracking-widest font-black">Staff Access Mode</div>
+            <p className="text-sm text-neutral-300 mt-2">You can review applications and open Staff Knowledge. Manager-only controls are hidden.</p>
+          </div>
+        )}
 
         {/* SEARCH & TABLE */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_160px] gap-3 items-center">
@@ -835,14 +877,14 @@ export default function AdminDashboard() {
                 <th className="p-6">Identity</th>
                 <th className="p-6">Assignment</th>
                 <th className="p-6">Decision Log</th>
-                <th className="p-6 text-right">Intel</th>
+                <th className="p-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.02]">
               {filteredApps.map((app) => (
                 <tr key={app.id} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-6">
-                    <div className="font-bold text-white text-sm uppercase italic">{app.username?.trim() || "ID-ONLY APPLICANT"}</div>
+                    <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
                     <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
                       {app.discord_id} <ExternalLink size={10} />
                     </a>
@@ -852,7 +894,7 @@ export default function AdminDashboard() {
                   </td>
                   <td className="p-6">
                     <div className={`text-[10px] font-bold uppercase mb-1 ${app.status === 'approved' ? 'text-green-500' : app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'}`}>{app.status}</div>
-                    <div className="text-[8px] text-neutral-600 italic font-medium">{app.audit_note || 'Awaiting Command Review'}</div>
+                    <div className="text-[8px] text-neutral-600 italic font-medium">{app.audit_note || 'Waiting for manager review'}</div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
@@ -862,7 +904,7 @@ export default function AdminDashboard() {
                       View
                     </button>
 
-                    {app.status !== "pending" && (
+                    {canAccessAdmin && app.status !== "pending" && (
                       <button
                         onClick={() => handleDecision(app.id, 'reset')}
                         disabled={processingId === app.id}
@@ -872,13 +914,15 @@ export default function AdminDashboard() {
                       </button>
                     )}
 
-                    <button
-                      onClick={() => handleDeleteApplication(String(app.id))}
-                      disabled={deletingId === String(app.id)}
-                      className="ml-2 px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50"
-                    >
-                      {deletingId === String(app.id) ? "Deleting..." : "Delete"}
-                    </button>
+                    {canAccessAdmin && (
+                      <button
+                        onClick={() => handleDeleteApplication(String(app.id))}
+                        disabled={deletingId === String(app.id)}
+                        className="ml-2 px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+                      >
+                        {deletingId === String(app.id) ? "Deleting..." : "Delete"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -891,16 +935,16 @@ export default function AdminDashboard() {
               <div key={app.id} className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-bold text-white text-sm uppercase italic">{app.username?.trim() || "ID-ONLY APPLICANT"}</div>
+                    <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
                     <div className="text-[11px] text-neutral-500 mt-1 break-all">{app.discord_id}</div>
                   </div>
                   <span className={`text-[10px] font-bold uppercase ${app.status === 'approved' ? 'text-green-500' : app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'}`}>{app.status}</span>
                 </div>
 
                 <div className="mt-2 text-[10px] uppercase tracking-widest text-neutral-500">{app.role_title}</div>
-                <div className="mt-2 text-[10px] text-neutral-600 italic">{app.audit_note || 'Awaiting Command Review'}</div>
+                <div className="mt-2 text-[10px] text-neutral-600 italic">{app.audit_note || 'Waiting for manager review'}</div>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className={`mt-3 grid ${canAccessAdmin ? "grid-cols-3" : "grid-cols-1"} gap-2`}>
                   <button
                     onClick={() => openApplication(app)}
                     className="px-2 py-2 rounded-lg border border-white/15 text-neutral-200 hover:bg-white/5 text-[11px] uppercase"
@@ -908,25 +952,29 @@ export default function AdminDashboard() {
                     View
                   </button>
 
-                  {app.status !== 'pending' ? (
-                    <button
-                      onClick={() => handleDecision(app.id, 'reset')}
-                      disabled={processingId === app.id}
-                      className="px-2 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 disabled:opacity-50 text-[11px] uppercase"
-                    >
-                      Reset
-                    </button>
-                  ) : (
-                    <div />
-                  )}
+                  {canAccessAdmin
+                    ? (app.status !== 'pending' ? (
+                        <button
+                          onClick={() => handleDecision(app.id, 'reset')}
+                          disabled={processingId === app.id}
+                          className="px-2 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 disabled:opacity-50 text-[11px] uppercase"
+                        >
+                          Reset
+                        </button>
+                      ) : (
+                        <div />
+                      ))
+                    : null}
 
-                  <button
-                    onClick={() => handleDeleteApplication(String(app.id))}
-                    disabled={deletingId === String(app.id)}
-                    className="px-2 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50 text-[11px] uppercase"
-                  >
-                    Delete
-                  </button>
+                  {canAccessAdmin && (
+                    <button
+                      onClick={() => handleDeleteApplication(String(app.id))}
+                      disabled={deletingId === String(app.id)}
+                      className="px-2 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50 text-[11px] uppercase"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -966,8 +1014,8 @@ export default function AdminDashboard() {
               <button onClick={() => setSelectedApp(null)} className="absolute top-4 right-4 md:top-8 md:right-8 text-neutral-600 hover:text-white"><XCircle size={24} /></button>
               
               <div className="mb-8 md:mb-10">
-                <div className="text-yellow-500 text-[9px] font-black uppercase tracking-[0.4em] mb-4 flex items-center gap-2"><Shield size={12} /> Confidential Intelligence</div>
-                <h2 className="text-2xl md:text-4xl font-black text-white uppercase italic tracking-tighter mb-4">{selectedApp.username?.trim() || "ID-ONLY APPLICANT"}</h2>
+                <div className="text-yellow-500 text-[9px] font-black uppercase tracking-[0.4em] mb-4 flex items-center gap-2"><Shield size={12} /> Application Details</div>
+                <h2 className="text-2xl md:text-4xl font-black text-white uppercase italic tracking-tighter mb-4">{selectedApp.username}</h2>
                 <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Applying for: <span className="text-white">{selectedApp.role_title}</span></div>
               </div>
               
@@ -1013,36 +1061,39 @@ export default function AdminDashboard() {
               </div>
               
               {/* --- ACTION ZONE --- */}
-              <div className="flex flex-col gap-4 border-t border-white/5 pt-8">
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    disabled={processingId === selectedApp.id} 
-                    onClick={() => handleDecision(selectedApp.id, 'approved')} 
-                    className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all"
-                  >
-                    <CheckCircle2 size={16}/> Approve Entry
-                  </button>
-                  <button 
-                    disabled={processingId === selectedApp.id} 
-                    onClick={() => handleDecision(selectedApp.id, 'declined')} 
-                    className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
-                  >
-                    <XSquare size={16}/> Decline Entry
-                  </button>
-                </div>
+              {canAccessAdmin ? (
+                <div className="flex flex-col gap-4 border-t border-white/5 pt-8">
+                  <div className="grid grid-cols-2 gap-4">
+                    <button 
+                      disabled={processingId === selectedApp.id} 
+                      onClick={() => handleDecision(selectedApp.id, 'approved')} 
+                      className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all"
+                    >
+                      <CheckCircle2 size={16}/> Approve Entry
+                    </button>
+                    <button 
+                      disabled={processingId === selectedApp.id} 
+                      onClick={() => handleDecision(selectedApp.id, 'declined')} 
+                      className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
+                    >
+                      <XSquare size={16}/> Decline Entry
+                    </button>
+                  </div>
 
-                {/* THE RESET BUTTON (SECOND CHANCE) */}
-                {selectedApp.status !== 'pending' && (
-                  <button 
-                    disabled={processingId === selectedApp.id} 
-                    onClick={() => handleDecision(selectedApp.id, 'reset')} 
-                    className="w-full py-4 bg-white/5 text-neutral-500 border border-white/10 rounded-xl font-black uppercase text-[9px] tracking-[0.3em] flex items-center justify-center gap-2 hover:bg-yellow-500/10 hover:text-yellow-500 hover:border-yellow-500/50 transition-all group"
-                  >
-                    <RefreshCw size={14} className={processingId === selectedApp.id ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}/> 
-                    Reset Protocol (Second Chance)
-                  </button>
-                )}
-              </div>
+                  {selectedApp.status !== 'pending' && (
+                    <button 
+                      disabled={processingId === selectedApp.id} 
+                      onClick={() => handleDecision(selectedApp.id, 'reset')} 
+                      className="w-full py-4 bg-white/5 text-neutral-500 border border-white/10 rounded-xl font-black uppercase text-[9px] tracking-[0.3em] flex items-center justify-center gap-2 hover:bg-yellow-500/10 hover:text-yellow-500 hover:border-yellow-500/50 transition-all group"
+                    >
+                      <RefreshCw size={14} className={processingId === selectedApp.id ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"}/> 
+                      Reset to Pending (Allow Re-review)
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="border-t border-white/5 pt-6 text-xs uppercase tracking-widest text-blue-300">Read-only staff view</div>
+              )}
             </motion.div>
           </motion.div>
         )}

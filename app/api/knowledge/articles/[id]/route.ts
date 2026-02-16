@@ -17,42 +17,50 @@ function toErrorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
+function normalizeAudience(input: string): "internal" | "public" {
+  return String(input || "").trim().toLowerCase() === "public" ? "public" : "internal";
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const access = await getSessionAccessInfo(session);
-    if (!access.canAccessKnowledge) {
-      return NextResponse.json({ error: "Knowledge access required" }, { status: 403 });
-    }
 
     await ensureKnowledgeTable();
 
     const { id } = await params;
     const canEdit = access.canAccessAdmin;
+    const canReadInternal = access.canAccessKnowledge;
+    const canReadPublic = true;
 
     const article = await sql`
-      SELECT id, slug, title, category, summary, content, published, created_by, updated_by, created_at, updated_at
+      SELECT id, slug, title, category, audience, summary, content, published, created_by, updated_by, created_at, updated_at
       FROM knowledge_articles
       WHERE (id::text = ${id} OR slug = ${id})
-        AND (${canEdit} = true OR published = true)
+        AND (
+          (${canEdit} = true)
+          OR (
+            published = true
+            AND (
+              (audience = 'public' AND ${canReadPublic} = true)
+              OR (audience = 'internal' AND ${canReadInternal} = true)
+            )
+          )
+        )
       LIMIT 1
     `;
 
     if (!article.rows.length) {
-      return NextResponse.json({ error: "Article not found" }, { status: 404 });
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
     }
 
     return NextResponse.json({ article: article.rows[0], canEdit });
   } catch (err: unknown) {
     console.error("[knowledge/article] GET error:", toErrorMessage(err));
-    return NextResponse.json({ error: "Failed to load article" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to load content" }, { status: 500 });
   }
 }
 
@@ -63,7 +71,7 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions);
     const access = await getSessionAccessInfo(session);
-    if (!session || !access.canAccessAdmin) {
+    if (!session || !access.canManageKnowledge) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -74,6 +82,7 @@ export async function PUT(
 
     const title = String(body?.title || "").trim();
     const category = String(body?.category || "general").trim().toLowerCase();
+    const audience = normalizeAudience(String(body?.audience || "internal"));
     const summary = String(body?.summary || "").trim();
     const content = String(body?.content || "").trim();
     const published = Boolean(body?.published);
@@ -90,17 +99,18 @@ export async function PUT(
       SET slug = ${slug},
           title = ${title},
           category = ${category || "general"},
+          audience = ${audience},
           summary = ${summary || null},
           content = ${content},
           published = ${published},
           updated_by = ${actor},
           updated_at = NOW()
       WHERE id::text = ${id} OR slug = ${id}
-      RETURNING id, slug, title, category, summary, content, published, created_by, updated_by, created_at, updated_at
+        RETURNING id, slug, title, category, audience, summary, content, published, created_by, updated_by, created_at, updated_at
     `;
 
     if (!updated.rows.length) {
-      return NextResponse.json({ error: "Article not found" }, { status: 404 });
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
     }
 
     await logAdminActivity({
@@ -110,13 +120,13 @@ export async function PUT(
       area: "knowledge",
       action: "update-article",
       target: String(updated.rows[0]?.id || id),
-      metadata: { slug, title, published },
+      metadata: { slug, title, published, audience },
     });
 
     return NextResponse.json({ ok: true, article: updated.rows[0] });
   } catch (err: unknown) {
     console.error("[knowledge/article] PUT error:", toErrorMessage(err));
-    return NextResponse.json({ error: "Failed to update article" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update content" }, { status: 500 });
   }
 }
 
@@ -127,7 +137,7 @@ export async function DELETE(
   try {
     const session = await getServerSession(authOptions);
     const access = await getSessionAccessInfo(session);
-    if (!session || !access.canAccessAdmin) {
+    if (!session || !access.canManageKnowledge) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -142,7 +152,7 @@ export async function DELETE(
     `;
 
     if (!deleted.rows.length) {
-      return NextResponse.json({ error: "Article not found" }, { status: 404 });
+      return NextResponse.json({ error: "Content not found" }, { status: 404 });
     }
 
     await logAdminActivity({
@@ -157,6 +167,6 @@ export async function DELETE(
     return NextResponse.json({ ok: true, id: deleted.rows[0].id });
   } catch (err: unknown) {
     console.error("[knowledge/article] DELETE error:", toErrorMessage(err));
-    return NextResponse.json({ error: "Failed to delete article" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete content" }, { status: 500 });
   }
 }
