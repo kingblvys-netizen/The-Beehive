@@ -10,26 +10,48 @@ export async function POST(req: Request) {
     const adminUser = session?.user as any;
     const adminId = adminUser?.id || adminUser?.discordId;
 
-    // Security check against your admin list
+    // --- SECURITY GATE ---
     if (!session || !ADMIN_IDS.includes(adminId)) {
-      return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized: Admin Clearance Required' }, { status: 401 });
     }
 
     const body = await req.json();
     const { applicationId, status } = body; 
 
     if (!applicationId || !status) {
-      return NextResponse.json({ error: 'Missing Data' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing Protocol Data' }, { status: 400 });
     }
 
-    // Determine final status and log the admin who did it
+    // --- 1. PURGE PROTOCOL (Allows Re-application) ---
+    // If status is 'purge', we delete the entry so the user can apply again.
+    if (status === 'purge') {
+      const deleteResult = await sql`
+        DELETE FROM applications 
+        WHERE id = ${applicationId}
+        RETURNING id;
+      `;
+
+      if (deleteResult.rowCount === 0) {
+        return NextResponse.json({ error: 'Record not found in core' }, { status: 404 });
+      }
+
+      return NextResponse.json({ 
+        ok: true, 
+        message: 'Record successfully purged. Candidate may re-apply.' 
+      });
+    }
+
+    // --- 2. RESET/DECISION PROTOCOL ---
+    // 'reset' sets status back to 'pending'. Others (approved/declined) update as requested.
     const isReset = status === 'reset';
     const finalStatus = isReset ? 'pending' : status;
+    
+    // Generate a timestamped audit log for the dashboard
     const auditNote = isReset 
-      ? `RESET by ${adminUser.name} on ${new Date().toLocaleDateString()}`
+      ? `RESET protocol initiated by ${adminUser.name} on ${new Date().toLocaleDateString()}`
       : `${status.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
 
-    const result = await sql`
+    const updateResult = await sql`
       UPDATE applications 
       SET status = ${finalStatus}, 
           audit_note = ${auditNote} 
@@ -37,14 +59,17 @@ export async function POST(req: Request) {
       RETURNING *;
     `;
 
-    if (result.rowCount === 0) {
-      return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+    if (updateResult.rowCount === 0) {
+      return NextResponse.json({ error: 'Identity matching failed' }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, application: result.rows[0] });
+    return NextResponse.json({ 
+      ok: true, 
+      application: updateResult.rows[0] 
+    });
 
   } catch (error: any) {
-    console.error("Decision API Error:", error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error("Decision API Critical Failure:", error);
+    return NextResponse.json({ error: 'Internal Core Error' }, { status: 500 });
   }
 }
