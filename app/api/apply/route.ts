@@ -7,15 +7,16 @@ export async function POST(req: Request) {
     const session = await getServerSession();
     const body = await req.json();
     
+    // Fallback to session if body is empty
     const discord_id = body.discord_id || (session?.user as any)?.id; 
     const username = body.username || session?.user?.name;
     const { roleTitle, answers } = body;
 
     if (!discord_id || !username || !roleTitle) {
-      return NextResponse.json({ message: 'Identity verification failed.' }, { status: 400 });
+      return NextResponse.json({ message: 'Identity missing' }, { status: 400 });
     }
 
-    // MATCHES NEON SQL EXACTLY
+    // MATCHES NEON SQL: username, role_title
     await sql`
       INSERT INTO applications (discord_id, username, role_title, status, answers)
       VALUES (${discord_id}, ${username}, ${roleTitle}, 'pending', ${JSON.stringify(answers)});
@@ -24,6 +25,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: 'Success' }, { status: 200 });
   } catch (error) {
     console.error('Database Error:', error);
-    return NextResponse.json({ message: 'Database rejection' }, { status: 500 });
+    return NextResponse.json({ message: 'Transmission failed' }, { status: 500 });
   }
 }

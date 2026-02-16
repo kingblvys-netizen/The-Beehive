@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetches columns confirmed in your SQL execution
+    // Pulls the columns confirmed in your SQL execution
     const { rows } = await sql`
       SELECT id, discord_id, username, role_title, status, answers, created_at 
       FROM applications 
