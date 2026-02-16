@@ -72,7 +72,13 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
   const q = questions[currentStep];
   
   const progress = ((currentStep + 1) / totalPages) * 100;
-  const isStepComplete = formData[q.id] && formData[q.id].trim().length > 3;
+  const currentValue = String(formData[q.id] ?? "").trim();
+  const isStepComplete =
+    q.type === "radio"
+      ? currentValue.length > 0
+      : q.type === "textarea"
+      ? currentValue.length >= 8
+      : currentValue.length >= 2;
 
   // Data Density Meter
   const getDataDensity = (val: string) => {
@@ -283,8 +289,8 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
                           <button 
                             key={opt} 
                             onClick={() => setFormData(p => ({ ...p, [q.id]: opt }))} 
-                            className={`p-5 rounded-lg border font-black text-[10px] uppercase tracking-[0.2em] transition-all text-left flex items-center justify-between group ${
-                              formData[q.id] === opt 
+                            className={`p-5 rounded-lg border font-black text-[10px] uppercase tracking-[0.2em] transition-all text-left flex items-center justify-between group $
+                              ${formData[q.id] === opt 
                               ? 'bg-yellow-400 text-black border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.2)]' 
                               : 'bg-black/40 border-white/5 text-neutral-600 hover:border-white/20'
                             }`}

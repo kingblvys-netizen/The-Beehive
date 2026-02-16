@@ -24,8 +24,8 @@ const DiscordIcon = ({ size = 24, className = "" }: { size?: number, className?:
 export default function Home() {
   const { data: session, status } = useSession();
   const [isHovering, setIsHovering] = useState(false);
-  const [liveRoles, setLiveRoles] = useState(staticRoles); // fixed
-  const [submittedRoles, setSubmittedRoles] = useState<string[]>([]);
+  const [liveRoles, setLiveRoles] = useState(staticRoles);
+  const [submittedRoles, setSubmittedRoles] = useState<Record<string, string>>({});
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
@@ -57,8 +57,25 @@ export default function Home() {
       }
     };
 
+    const loadSubmittedRoles = async () => {
+      if (status !== "authenticated") {
+        setSubmittedRoles({});
+        return;
+      }
+      try {
+        const res = await fetch("/api/apply", { cache: "no-store" });
+        const data = await res.json();
+        const map = Object.fromEntries(
+          (data?.appliedRoles || []).map((r: any) => [String(r.role_id), String(r.status)])
+        );
+        setSubmittedRoles(map);
+      } catch {
+        setSubmittedRoles({});
+      }
+    };
+
     loadRoleSettings();
-    if (status === "unauthenticated") setSubmittedRoles([]);
+    loadSubmittedRoles();
   }, [status]);
 
   // --- 3. INPUT TRACKING ---
@@ -200,27 +217,34 @@ export default function Home() {
           {/* --- MISSION ROLES --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {liveRoles.map((role) => {
-              const isPending = submittedRoles.includes(role.id);
+              const submittedStatus = submittedRoles[role.id];
+              const isSubmitted = Boolean(submittedStatus);
               const IconComponent = role.icon;
 
               return (
-                <motion.div key={role.id} variants={itemVariants} 
-                  onMouseEnter={() => setIsHovering(role.isOpen && !isPending)} 
+                <motion.div
+                  key={role.id}
+                  variants={itemVariants}
+                  onMouseEnter={() => setIsHovering(role.isOpen && !isSubmitted)}
                   onMouseLeave={() => setIsHovering(false)}
-                  whileHover={role.isOpen && !isPending ? { y: -8, scale: 1.01 } : {}}
+                  whileHover={role.isOpen && !isSubmitted ? { y: -8, scale: 1.01 } : {}}
                   className={`group bg-[#080808] border p-10 rounded-[2.5rem] transition-all duration-500 relative overflow-hidden ${
-                    !role.isOpen ? 'grayscale opacity-30 cursor-not-allowed border-white/5' : 
-                    isPending ? 'border-yellow-400/20 bg-yellow-400/[0.01]' : 'border-white/5 hover:border-yellow-400/50 hover:shadow-[0_30px_60px_-25px_#FACC1522]'
-                  }`}>
+                    !role.isOpen
+                      ? 'grayscale opacity-30 cursor-not-allowed border-white/5'
+                      : isSubmitted
+                      ? 'border-yellow-400/20 bg-yellow-400/[0.01]'
+                      : 'border-white/5 hover:border-yellow-400/50 hover:shadow-[0_30px_60px_-25px_#FACC1522]'
+                  }`}
+                >
                   
-                  {role.isOpen && !isPending && (
+                  {role.isOpen && !isSubmitted && (
                     <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
                   )}
 
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-12">
                       <div className={`p-5 rounded-2xl transition-all duration-700 ${
-                        isPending ? 'bg-yellow-400/10 text-yellow-400' : 
+                        isSubmitted ? 'bg-yellow-400/10 text-yellow-400' : 
                         'bg-neutral-900 border border-white/5 group-hover:bg-yellow-400 group-hover:text-black group-hover:shadow-[0_0_25px_#FACC1588]'
                       }`}>
                           <IconComponent size={28} />
@@ -230,9 +254,9 @@ export default function Home() {
                         <span className="text-[9px] px-3 py-1.5 rounded-full border border-red-500/20 text-red-500 bg-red-500/5 font-black tracking-widest uppercase flex items-center gap-1">
                           <Lock size={10} /> Locked
                         </span>
-                      ) : isPending ? (
+                      ) : isSubmitted ? (
                         <span className="text-[9px] px-3 py-1.5 rounded-full border border-yellow-400/20 text-yellow-400 bg-yellow-400/5 font-black tracking-widest uppercase flex items-center gap-1">
-                          <Clock size={10} /> In Review
+                          <Clock size={10} /> Already Submitted
                         </span>
                       ) : (
                         <span className={`text-[9px] px-3 py-1.5 rounded-full border font-black tracking-widest uppercase ${
@@ -254,9 +278,9 @@ export default function Home() {
                       {role.description}
                     </p>
                     
-                    {isPending ? (
-                      <div className="w-full py-5 text-center border border-dashed border-yellow-400/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] text-yellow-400/60 italic bg-yellow-400/[0.02]">
-                        Node Synchronizing...
+                    {isSubmitted ? (
+                      <div className="w-full py-5 text-center border border-dashed border-yellow-400/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.35em] text-yellow-400/70 italic bg-yellow-400/[0.02]">
+                        Already Submitted ({submittedStatus})
                       </div>
                     ) : !role.isOpen ? (
                       <div className="w-full py-5 bg-white/5 border border-white/5 rounded-2xl text-center text-[10px] font-black uppercase tracking-[0.3em] text-neutral-700 italic">

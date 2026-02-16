@@ -57,31 +57,51 @@ export async function GET(req: Request) {
     const session = await getServerSession(authOptions);
     const user = session?.user as any;
     if (!user?.id) {
-      return NextResponse.json({ applied: false });
+      return NextResponse.json({ applied: false, appliedRoles: [] });
     }
 
     const { searchParams } = new URL(req.url);
     const roleId = searchParams.get("roleId");
-    if (!roleId) {
-      return NextResponse.json({ error: "Missing roleId" }, { status: 400 });
+
+    // Backward-compatible single-role check
+    if (roleId) {
+      const existing = await sql`
+        SELECT id, status
+        FROM applications
+        WHERE discord_id = ${String(user.id)}
+          AND role_id = ${String(roleId)}
+          AND status <> 'reset'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+
+      return NextResponse.json({
+        applied: existing.rows.length > 0,
+        existing: existing.rows[0] ?? null,
+      });
     }
 
-    const existing = await sql`
-      SELECT id, status
+    // Homepage lock map (latest non-reset entry per role)
+    const submitted = await sql`
+      SELECT DISTINCT ON (role_id)
+        role_id,
+        role_title,
+        status,
+        id,
+        created_at
       FROM applications
       WHERE discord_id = ${String(user.id)}
-        AND role_id = ${String(roleId)}
+        AND role_id IS NOT NULL
         AND status <> 'reset'
-      ORDER BY created_at DESC
-      LIMIT 1
+      ORDER BY role_id, created_at DESC
     `;
 
     return NextResponse.json({
-      applied: existing.rows.length > 0,
-      existing: existing.rows[0] ?? null,
+      applied: submitted.rows.length > 0,
+      appliedRoles: submitted.rows,
     });
   } catch (err: any) {
     console.error("[apply] check failed:", err?.message || err);
-    return NextResponse.json({ applied: false }, { status: 500 });
+    return NextResponse.json({ applied: false, appliedRoles: [] }, { status: 500 });
   }
 }
