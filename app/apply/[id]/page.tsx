@@ -92,6 +92,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
+          roleId: role.id,
           roleTitle: role.title,
           username: session?.user?.name || "Anonymous",
           discord_id: (session?.user as any)?.id || "unknown",
