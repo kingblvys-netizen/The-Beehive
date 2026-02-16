@@ -9,6 +9,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // 1. Authentication Check
     const session = await getServerSession(authOptions);
     const user = session?.user as
       | { id?: string; discordId?: string; name?: string; email?: string }
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized: no session" }, { status: 401 });
     }
 
+    // 2. Identity Resolution
     const userId = user?.discordId || user?.id || user?.email || user?.name;
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized: no user id" }, { status: 401 });
@@ -25,12 +27,12 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => null);
 
-    // Accept both:
-    // 1) { role, answers }
-    // 2) direct answers object
+    // 3. Data Formatting
+    // Check for 'roleTitle' (from frontend) or 'role' (fallback)
+    const rawRole = body?.roleTitle || body?.role;
     const role =
-      typeof body?.role === "string" && body.role.trim().length > 0
-        ? body.role.trim()
+      typeof rawRole === "string" && rawRole.trim().length > 0
+        ? rawRole.trim()
         : "general";
 
     const answers =
@@ -47,17 +49,26 @@ export async function POST(req: Request) {
       );
     }
 
+    // 4. Database Insertion (THE FIX)
+    // We strictly use the column names confirmed in your Neon Database
     const rows = await sql`
-      INSERT INTO applications (user_id, discord_username, role, answers, status)
-      VALUES (${String(userId)}, ${user?.name ?? null}, ${role}, ${sql.json(answers)}, 'pending')
-      RETURNING id, user_id, discord_username, role, status, created_at;
+      INSERT INTO applications (discord_id, username, role_title, answers, status)
+      VALUES (
+        ${String(userId)}, 
+        ${user?.name ?? "Anonymous"}, 
+        ${role}, 
+        ${JSON.stringify(answers)}, 
+        'pending'
+      )
+      RETURNING id, discord_id, username, role_title, status, created_at;
     `;
 
     return NextResponse.json({ ok: true, application: rows[0] }, { status: 201 });
+
   } catch (err: any) {
-    console.error("[/api/apply] error", {
+    console.error("[/api/apply] Database Error details:", {
       message: err?.message,
-      code: err?.code,
+      code: err?.code, // Postgres error code (e.g., 42703 for missing column)
       detail: err?.detail,
     });
 
@@ -67,6 +78,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-console.log("SELECT to_regclass('public.applications');");
-console.log((await sql`SELECT to_regclass('public.applications');`).toString());
