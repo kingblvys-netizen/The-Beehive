@@ -18,33 +18,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized: no session" }, { status: 401 });
     }
 
-    const userId =
-      user?.discordId ||
-      user?.id ||
-      user?.email ||
-      user?.name;
-
+    const userId = user?.discordId || user?.id || user?.email || user?.name;
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized: no userId in session" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized: no user id" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { role, answers } = body ?? {};
+    const body = await req.json().catch(() => null);
 
-    if (!role || !answers || typeof answers !== "object") {
-      return NextResponse.json({ error: "Missing role or answers" }, { status: 400 });
+    // Accept both:
+    // 1) { role, answers }
+    // 2) direct answers object
+    const role =
+      typeof body?.role === "string" && body.role.trim().length > 0
+        ? body.role.trim()
+        : "general";
+
+    const answers =
+      body?.answers && typeof body.answers === "object"
+        ? body.answers
+        : body && typeof body === "object"
+        ? body
+        : null;
+
+    if (!answers) {
+      return NextResponse.json(
+        { error: "Missing answers payload" },
+        { status: 400 }
+      );
     }
 
     const rows = await sql`
       INSERT INTO applications (user_id, discord_username, role, answers, status)
-      VALUES (${String(userId)}, ${user?.name ?? null}, ${String(role)}, ${sql.json(answers)}, 'pending')
+      VALUES (${String(userId)}, ${user?.name ?? null}, ${role}, ${sql.json(answers)}, 'pending')
       RETURNING id, user_id, discord_username, role, status, created_at;
     `;
 
     return NextResponse.json({ ok: true, application: rows[0] }, { status: 201 });
   } catch (err: any) {
-    console.error("[/api/apply] error", err);
-    return NextResponse.json({ error: err?.message ?? "Failed to submit application" }, { status: 500 });
+    console.error("[/api/apply] error", {
+      message: err?.message,
+      code: err?.code,
+      detail: err?.detail,
+    });
+
+    return NextResponse.json(
+      { error: err?.message ?? "Failed to submit application" },
+      { status: 500 }
+    );
   }
 }
 
