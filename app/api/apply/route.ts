@@ -1,57 +1,43 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-// We use the standard Vercel Postgres import to ensure the SQL syntax is correct
-import { sql } from '@vercel/postgres'; 
-import { authOptions } from "@/lib/auth"; // Keep your auth import
+import { NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres'; // Standard Vercel Import
+import { getServerSession } from "next-auth/next";
 
 export async function POST(req: Request) {
   try {
-    // 1. Get the User Session
-    const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const session = await getServerSession();
+    const body = await req.json();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // 1. SIMPLE IDENTITY CHECK
+    // We try to get the ID from the form first, then the session
+    const discord_id = body.discord_id || (session?.user as any)?.id;
+    const username = body.username || session?.user?.name || "Unknown User";
+    
+    // 2. GET THE ROLE
+    // The frontend sends 'roleTitle', but we check 'role' just in case
+    const roleTitle = body.roleTitle || body.role;
+
+    // 3. STOP IF DATA IS MISSING
+    if (!discord_id || !roleTitle) {
+      return NextResponse.json({ message: 'Missing User ID or Role' }, { status: 400 });
     }
 
-    // 2. Identify the User
-    // We try multiple fields to make sure we get a valid ID
-    const userId = user.discordId || user.id || user.email || user.name;
-    const username = user.name || "Anonymous";
-
-    // 3. Get the Form Data
-    const body = await req.json();
-    // The frontend sends 'roleTitle', so we grab that. 
-    const roleTitle = body.roleTitle || body.role || "General";
-    const answers = body.answers || {};
-
-    // 4. THE CRITICAL FIX: Database Insertion
-    // We MUST use 'discord_id', 'username', and 'role_title' to match your Neon Database.
-    // If you use 'user_id' or 'role' here, IT WILL CRASH.
+    // 4. THE SAVE (Using the CORRECT column names)
+    // database: discord_id, username, role_title
     await sql`
-      INSERT INTO applications (discord_id, username, role_title, answers, status)
+      INSERT INTO applications (discord_id, username, role_title, status, answers)
       VALUES (
-        ${String(userId)}, 
+        ${discord_id}, 
         ${username}, 
         ${roleTitle}, 
-        ${JSON.stringify(answers)}, 
-        'pending'
+        'pending', 
+        ${JSON.stringify(body.answers)}
       );
     `;
 
-    return NextResponse.json({ ok: true, message: "Application Saved" }, { status: 201 });
+    return NextResponse.json({ message: 'Application Sent' }, { status: 200 });
 
-  } catch (err: any) {
-    console.error("Database Error:", err);
-    // This will print the specific reason (like "column does not exist") to your Vercel logs
-    return NextResponse.json(
-      { error: "Database transmission failed. Check logs for details." },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('Reset Code Error:', error);
+    return NextResponse.json({ message: 'Server Error' }, { status: 500 });
   }
-}
-
-// Keep the GET function so the Admin Panel can read this route if needed
-export async function GET() {
-  return NextResponse.json({ ok: true, message: "API is active" });
 }
