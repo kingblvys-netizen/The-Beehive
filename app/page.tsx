@@ -11,6 +11,7 @@ import { roles } from './data';
 import { motion, AnimatePresence, Variants, useMotionValue, useSpring } from 'framer-motion';
 
 // --- CONFIGURATION: ADMIN ACCESS LIST ---
+// Only these IDs will see the Shield Icon
 const ADMIN_IDS = [
   "1208908529411301387", // King B
   "1406555930769756161", // Admin 2
@@ -48,7 +49,7 @@ export default function Home() {
   const clickSound = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Initialize Audio (Optional: Uncomment .play() calls below if you have files)
+    // Initialize Audio
     if (typeof window !== 'undefined') {
       hoverSound.current = new Audio('/sounds/hover.mp3'); 
       hoverSound.current.volume = 0.2;
@@ -137,7 +138,7 @@ export default function Home() {
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
                 
-                {/* --- ADMIN BUTTON (Visible to Authorized IDs) --- */}
+                {/* --- ADMIN BUTTON CHECK --- */}
                 {ADMIN_IDS.includes((session.user as any)?.id) && (
                   <Link href="/admin" onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)} 
                     className="p-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all flex items-center gap-2 group">
