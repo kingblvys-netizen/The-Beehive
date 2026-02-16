@@ -1,16 +1,30 @@
 import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
+import { getServerSession } from "next-auth/next";
 
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession();
     const body = await req.json();
-    console.log("BODY RECEIVED:", body);
+    
+    // Safety check: prioritize session data for identity
+    const discord_id = body.discord_id || (session?.user as any)?.id; 
+    const username = body.username || session?.user?.name;
+    const { roleTitle, answers } = body;
 
-    await sql`SELECT 1`;
+    if (!discord_id || !username || !roleTitle) {
+      return NextResponse.json({ message: 'Identity verification failed.' }, { status: 400 });
+    }
 
-    return NextResponse.json({ message: "DB works" });
+    // MATCHES NEON SQL TABLE EXACTLY: username, role_title
+    await sql`
+      INSERT INTO applications (discord_id, username, role_title, status, answers)
+      VALUES (${discord_id}, ${username}, ${roleTitle}, 'pending', ${JSON.stringify(answers)});
+    `;
+
+    return NextResponse.json({ message: 'Success' }, { status: 200 });
   } catch (error) {
-    console.error("ERROR:", error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    console.error('Submission Error:', error);
+    return NextResponse.json({ message: 'Database rejection' }, { status: 500 });
   }
 }
