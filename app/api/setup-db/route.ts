@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // This command creates the table in your Vercel Postgres database
+    // 1. Create the 'applications' table securely
+    // The 'IF NOT EXISTS' part prevents errors if you run this multiple times.
     await sql`
       CREATE TABLE IF NOT EXISTS applications (
         id SERIAL PRIMARY KEY,
@@ -15,9 +16,11 @@ export async function GET() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `;
-    return NextResponse.json({ message: 'Database Table Created Successfully' });
+
+    // 2. Return success message
+    return NextResponse.json({ message: 'Database Table Created Successfully' }, { status: 200 });
   } catch (error) {
-    console.error(error);
+    console.error('Setup Error:', error);
     return NextResponse.json({ error: 'Database creation failed' }, { status: 500 });
   }
 }

@@ -4,21 +4,26 @@ import { getServerSession } from "next-auth/next";
 
 export async function POST(req: Request) {
   try {
-    // 1. Get the current logged-in session
+    // 1. Get the current secure session
     const session = await getServerSession();
     const body = await req.json();
     
-    // 2. Extract identity data from the session if not in the body
+    // 2. THE FIX: Fallback to session data if the form body is missing fields
+    // This prevents the "400 Bad Request" when the form doesn't send the ID explicitly
     const discord_id = body.discord_id || (session?.user as any)?.id; 
     const username = body.username || session?.user?.name;
     const { roleTitle, answers } = body;
 
-    // 3. Security check: If there is no ID, the user isn't logged in properly
+    // 3. Validation
     if (!discord_id || !username || !roleTitle) {
-      return NextResponse.json({ message: 'Missing ID or Name' }, { status: 400 });
+      console.error("Missing Identity Data:", { discord_id, username, roleTitle });
+      return NextResponse.json(
+        { message: 'Identity verification failed. Please re-login.' }, 
+        { status: 400 }
+      );
     }
 
-    // 4. Insert the application into your Postgres database
+    // 4. Save to Database
     await sql`
       INSERT INTO applications (discord_id, discord_name, role, status, answers)
       VALUES (
@@ -30,13 +35,11 @@ export async function POST(req: Request) {
       );
     `;
 
-    // 5. Success response back to the browser
+    // 5. Success
     return NextResponse.json({ message: 'Success' }, { status: 200 });
 
   } catch (error) {
-    // Log the error to your Vercel runtime logs for debugging
     console.error('Database insertion error:', error);
-    
     return NextResponse.json(
       { message: 'Server error: Could not save application' }, 
       { status: 500 }

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Hexagon, ChevronRight, LogOut, Clock, Users, Shield, Zap, 
+  Hexagon, ChevronRight, LogOut, Clock, Users, Zap, 
   Twitch, Activity 
 } from 'lucide-react';
 import { signIn, useSession, signOut } from "next-auth/react";
@@ -43,11 +43,13 @@ export default function Home() {
   const clickSound = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Initialize Audio
-    hoverSound.current = new Audio('/sounds/hover.mp3'); 
-    hoverSound.current.volume = 0.2;
-    clickSound.current = new Audio('/sounds/click.mp3');
-    clickSound.current.volume = 0.4;
+    // Initialize Audio (Optional: Uncomment .play() calls below if you have files)
+    if (typeof window !== 'undefined') {
+      hoverSound.current = new Audio('/sounds/hover.mp3'); 
+      hoverSound.current.volume = 0.2;
+      clickSound.current = new Audio('/sounds/click.mp3');
+      clickSound.current.volume = 0.4;
+    }
 
     const saved = localStorage.getItem('beehive_submissions');
     if (saved) setSubmittedRoles(JSON.parse(saved));
@@ -78,7 +80,7 @@ export default function Home() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('click', handleClick);
     };
-  }, []);
+  }, [mouseX, mouseY]);
 
   // Animation Variants
   const containerVariants: Variants = {
@@ -95,11 +97,11 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-bee-black text-white relative overflow-hidden selection:bg-yellow-400 selection:text-black cursor-none">
+    <div className="min-h-screen bg-black text-white relative overflow-hidden selection:bg-yellow-400 selection:text-black cursor-none font-sans">
       
       {/* --- CURSOR (Now uses 'style' instead of 'animate' for 0 lag) --- */}
       <motion.div 
-        className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.6)]"
+        className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.6)] mix-blend-difference"
         style={{ x: cursorX, y: cursorY }}
         animate={{ 
           scale: isHovering ? 1.5 : 1, 
@@ -120,28 +122,29 @@ export default function Home() {
         ))}
       </AnimatePresence>
 
+      {/* --- BACKGROUND --- */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0" 
            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill-rule='evenodd' stroke='%23ffffff' stroke-width='2' fill='none'/%3E%3C/svg%3E")` }} 
       />
 
       {/* --- NAV --- */}
-      <nav className="border-b border-bee-gray bg-bee-black/90 backdrop-blur-md sticky top-0 z-50">
+      <nav className="border-b border-white/10 bg-black/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3" onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)}>
             <Hexagon className="text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" size={28} />
-            <span className="font-bold text-xl tracking-tight uppercase">The Beehive</span>
+            <span className="font-bold text-xl tracking-tight uppercase text-white">The Beehive</span>
           </Link>
           <div className="flex items-center gap-4">
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
-                <span className="font-bold text-sm hidden md:block text-gray-300">Welcome, {session.user?.name}</span>
-                <button onClick={() => signOut()} onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)} className="text-gray-500 hover:text-white transition p-2 hover:bg-white/5 rounded-full">
+                <span className="font-bold text-xs uppercase tracking-widest hidden md:block text-neutral-500">Welcome, {session.user?.name}</span>
+                <button onClick={() => signOut()} onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)} className="text-neutral-500 hover:text-white transition p-2 hover:bg-white/5 rounded-full">
                   <LogOut size={20} />
                 </button>
               </div>
             ) : (
               <button onClick={() => signIn('discord')} onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)}
-                className="bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-bold hover:bg-yellow-300 transition shadow-[0_0_20px_rgba(250,204,21,0.2)]">
+                className="bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-yellow-300 transition shadow-[0_0_20px_rgba(250,204,21,0.2)]">
                 Login with Discord
               </button>
             )}
@@ -162,25 +165,25 @@ export default function Home() {
             <div className="inline-block mb-6 px-4 py-1.5 rounded-full border border-yellow-400/20 bg-yellow-400/5 backdrop-blur-md">
               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-yellow-400/80">Recruitment Portal</span>
             </div>
-            <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter mb-6 leading-none">
+            <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter mb-6 leading-none text-white">
               The Beehive <span className="text-yellow-400 drop-shadow-[0_0_25px_rgba(250,204,21,0.4)]">Applications</span>
             </h1>
-            <p className="text-gray-500 font-medium max-w-2xl mx-auto text-lg leading-relaxed">
+            <p className="text-neutral-400 font-medium max-w-2xl mx-auto text-lg leading-relaxed">
               Join the hive. We are looking for dedicated individuals to help build, moderate, and innovate within our growing ecosystem.
             </p>
           </motion.div>
           
           {/* --- STATS BAR --- */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-24 max-w-4xl mx-auto">
-             <div className="bg-bee-dark/30 border border-bee-gray p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
+             <div className="bg-neutral-900/30 border border-white/10 p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
                <div className="p-3 bg-yellow-400/10 rounded-xl text-yellow-400"><Users size={24} /></div>
                <div>
-                  <div className="text-2xl font-black">4k+</div>
-                  <div className="text-xs uppercase tracking-widest text-gray-500">Total Members</div>
+                  <div className="text-2xl font-black text-white">4k+</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Total Members</div>
                </div>
              </div>
 
-             <div className="bg-bee-dark/30 border border-bee-gray p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
+             <div className="bg-neutral-900/30 border border-white/10 p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
                <div className="p-3 bg-yellow-400/10 rounded-xl text-yellow-400"><Activity size={24} /></div>
                <div>
                   <div className="text-2xl font-black text-green-400 flex items-center gap-2">
@@ -190,13 +193,13 @@ export default function Home() {
                      </span>
                      400+
                   </div>
-                  <div className="text-xs uppercase tracking-widest text-gray-500">Users Online</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Users Online</div>
                </div>
              </div>
 
-             <div className="bg-bee-dark/30 border border-bee-gray p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
+             <div className="bg-neutral-900/30 border border-white/10 p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
                <div className="p-3 bg-yellow-400/10 rounded-xl text-yellow-400"><Zap size={24} /></div>
-               <div><div className="text-2xl font-black">99.9%</div><div className="text-xs uppercase tracking-widest text-gray-500">Uptime</div></div>
+               <div><div className="text-2xl font-black text-white">99.9%</div><div className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Uptime</div></div>
              </div>
           </motion.div>
 
@@ -209,21 +212,21 @@ export default function Home() {
               return (
                 <motion.div key={role.id} variants={itemVariants} onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)}
                   whileHover={!isPending ? { y: -8, scale: 1.02 } : {}}
-                  className={`group bg-bee-dark/40 border p-8 rounded-[2rem] transition-all duration-300 relative overflow-hidden ${
-                    isPending ? 'border-yellow-400/20 opacity-80' : 'border-bee-gray hover:border-yellow-400/50 hover:shadow-[0_20px_40px_rgba(0,0,0,0.5)]'
+                  className={`group bg-neutral-900/40 border p-8 rounded-[2rem] transition-all duration-300 relative overflow-hidden ${
+                    isPending ? 'border-yellow-400/20 opacity-80' : 'border-white/10 hover:border-yellow-400/50 hover:shadow-[0_20px_40px_rgba(0,0,0,0.5)]'
                   }`}>
                   
                   {!isPending && <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-400/5 blur-[80px] group-hover:bg-yellow-400/10 transition-colors" />}
                   
                   <div className="flex justify-between items-start mb-8">
-                    <div className={`p-4 rounded-2xl ${isPending ? 'bg-yellow-400/5 text-yellow-400/50' : 'bg-bee-black border border-bee-gray group-hover:border-yellow-400/30 group-hover:text-yellow-400 transition-colors'}`}>
-                        <IconComponent size={24} />
+                    <div className={`p-4 rounded-2xl ${isPending ? 'bg-yellow-400/5 text-yellow-400/50' : 'bg-black border border-white/10 group-hover:border-yellow-400/30 group-hover:text-yellow-400 transition-colors'}`}>
+                        <IconComponent size={24} className="text-white group-hover:text-yellow-400 transition-colors" />
                     </div>
 
                     {isPending ? (
                       <span className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-yellow-400/30 text-yellow-400 bg-yellow-400/5 font-black tracking-widest uppercase"><Clock size={10} /> Pending</span>
                     ) : (
-                      <span className={`text-[10px] px-2 py-1 rounded border font-black tracking-widest ${
+                      <span className={`text-[10px] px-2 py-1 rounded border font-black tracking-widest uppercase ${
                         role.level === 'HIGH' ? 'border-red-500/30 text-red-500 bg-red-500/5' : 
                         role.level === 'MID' ? 'border-yellow-500/30 text-yellow-500 bg-yellow-500/5' : 
                         'border-green-500/30 text-green-500 bg-green-500/5'
@@ -231,19 +234,19 @@ export default function Home() {
                     )}
                   </div>
                   
-                  <h3 className="text-2xl font-bold mb-2 group-hover:text-yellow-400 transition-colors">{role.title}</h3>
-                  <div className="text-[10px] uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
+                  <h3 className="text-2xl font-black mb-2 text-white group-hover:text-yellow-400 transition-colors">{role.title}</h3>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4 flex items-center gap-2">
                      <Clock size={12} /> {role.commitment}
                   </div>
 
-                  <p className="text-gray-400 text-sm mb-8 leading-relaxed line-clamp-2 min-h-[40px]">{role.description}</p>
+                  <p className="text-neutral-400 text-sm mb-8 leading-relaxed line-clamp-2 min-h-[40px] font-medium">{role.description}</p>
                   
                   {isPending ? (
                     <div className="w-full py-4 text-center border border-dashed border-yellow-400/30 rounded-xl text-xs font-black uppercase tracking-[0.2em] text-yellow-400/60 italic">
                       Application under review
                     </div>
                   ) : (
-                    <Link href={`/apply/${role.id}`} className="group/btn relative w-full inline-flex items-center justify-center py-4 bg-bee-black/50 border border-bee-gray hover:border-yellow-400/50 text-gray-400 hover:text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl transition-all overflow-hidden">
+                    <Link href={`/apply/${role.id}`} className="group/btn relative w-full inline-flex items-center justify-center py-4 bg-black/50 border border-white/10 hover:border-yellow-400/50 text-neutral-400 hover:text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl transition-all overflow-hidden">
                       <div className="absolute inset-0 bg-yellow-400/0 group-hover/btn:bg-yellow-400/10 transition-colors" />
                       <span className="relative z-10 flex items-center gap-2">Start Application <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" /></span>
                     </Link>
@@ -255,21 +258,21 @@ export default function Home() {
         </motion.div>
       </main>
 
-      <footer className="border-t border-bee-gray bg-bee-black/50 backdrop-blur-md py-12 relative z-10">
+      <footer className="border-t border-white/10 bg-black/50 backdrop-blur-md py-12 relative z-10">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-3 opacity-50 hover:opacity-100 transition-opacity">
             <Hexagon className="text-yellow-400 fill-yellow-400" size={20} />
-            <span className="font-bold uppercase tracking-widest text-sm">The Beehive © 2026</span>
+            <span className="font-bold uppercase tracking-widest text-xs text-white">The Beehive © 2026</span>
           </div>
           <div className="flex items-center gap-6">
-            <a href="https://discord.gg/qR6kFuBhCh" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-yellow-400 transition-colors group">
-              <DiscordIcon size={28} className="group-hover:scale-110 transition-transform" />
+            <a href="https://discord.gg/qR6kFuBhCh" target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-yellow-400 transition-colors group">
+              <DiscordIcon size={24} className="group-hover:scale-110 transition-transform" />
             </a>
-            <a href="https://www.twitch.tv/its_pupbee" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-yellow-400 transition-colors group">
-              <Twitch size={28} className="group-hover:scale-110 transition-transform" />
+            <a href="https://www.twitch.tv/its_pupbee" target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-yellow-400 transition-colors group">
+              <Twitch size={24} className="group-hover:scale-110 transition-transform" />
             </a>
-            <a href="https://www.tiktok.com/@its_pupbee?lang=en" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-yellow-400 transition-colors group">
-              <TikTokIcon size={28} className="group-hover:scale-110 transition-transform" />
+            <a href="https://www.tiktok.com/@its_pupbee?lang=en" target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-yellow-400 transition-colors group">
+              <TikTokIcon size={24} className="group-hover:scale-110 transition-transform" />
             </a>
           </div>
         </div>

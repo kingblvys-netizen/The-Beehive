@@ -1,12 +1,13 @@
 import { Server, Shield, Users, MessageCircle, Video, Camera, LucideIcon } from 'lucide-react';
 
+// 1. Define strict interfaces
 export interface Role {
   id: string;
   title: string;
   level: 'HIGH' | 'MID' | 'LOW';
   description: string;
-  icon: LucideIcon;       // Fixed: Added to Interface
-  commitment: string;     // Fixed: Added to Interface
+  icon: LucideIcon;       
+  commitment: string;     
 }
 
 export interface Question {
@@ -17,7 +18,7 @@ export interface Question {
   options?: string[];
 }
 
-// 1. Roles organized from HIGH to LOW
+// 2. Roles Configuration
 export const roles: Role[] = [
   { 
     id: 'server-manager', 
@@ -69,12 +70,15 @@ export const roles: Role[] = [
   }
 ];
 
-export const getQuestions = (roleId: any): Question[] => {
+// 3. Question Logic
+export const getQuestions = (roleId: string | { id: string }): Question[] => {
+  // Normalize the input to a lowercase string ID
   const searchKey = (typeof roleId === 'string' ? roleId : roleId?.id || '').toLowerCase().trim();
 
+  // Common questions for everyone
   const baseQuestions: Question[] = [
     { id: 'discord_user', label: 'Discord Username', type: 'text', placeholder: 'e.g. kingb' },
-    { id: 'discord_id', label: 'Discord User ID', type: 'text', placeholder: 'e.g. 123456789012345678' },
+    { id: 'discord_id', label: 'Discord User ID', type: 'text', placeholder: 'e.g. 1208908529411301387' },
     { id: 'age', label: 'How old are you?', type: 'text', placeholder: 'Enter your age' },
     { 
       id: 'days_active', 
@@ -85,8 +89,7 @@ export const getQuestions = (roleId: any): Question[] => {
     { id: 'timezone', label: 'What is your timezone and most active hours?', type: 'text', placeholder: 'e.g. EST, 4 PM - 10 PM' }
   ];
 
-  // FIXED: Added type: 'textarea' to all questions below to fix the "Property type is missing" error
-
+  // Specific Role Logic
   if (searchKey === 'server-manager' || (searchKey.includes('manager') && !searchKey.includes('twitch'))) {
     return [
       ...baseQuestions,
