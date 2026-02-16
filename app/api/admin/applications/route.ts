@@ -21,13 +21,25 @@ export async function GET() {
     // 2. Synchronization Query: Fetch all application statuses for this specific user
     // This allows the homepage to accurately display 'Under Review' or unlock the button
     const { rows } = await sql`
-      SELECT id, role_title, status, created_at 
-      FROM applications 
-      WHERE discord_id = ${String(userId)}
-      ORDER BY created_at DESC
+      SELECT
+        a.id,
+        a.username,
+        a.discord_id,
+        a.role_id,
+        a.role_title,
+        a.status,
+        a.created_at,
+        COALESCE(
+          jsonb_object_agg(ans.question_id, ans.answer) FILTER (WHERE ans.question_id IS NOT NULL),
+          '{}'::jsonb
+        ) AS answers
+      FROM applications a
+      LEFT JOIN application_answers ans ON ans.application_id = a.id
+      GROUP BY a.id
+      ORDER BY a.created_at DESC
     `;
 
-    // Return the user's application history to sync the frontend
+    console.log("admin/apps answers sample:", rows[0]?.answers);
     return NextResponse.json(rows, { status: 200 });
 
   } catch (error) {
