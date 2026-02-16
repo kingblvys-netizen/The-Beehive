@@ -10,15 +10,7 @@ import {
   AlertTriangle, Power, Filter, Activity, Target, PieChart, ExternalLink
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
-
-// --- CONFIGURATION: AUTHORIZED ADMIN IDS ---
-const ADMIN_IDS = [
-  "1208908529411301387", // Syn
-  "1406555930769756161", 
-  "1241945084346372247",
-  "845669772926779392",
-  "417331086369226752"
-];
+import { ADMIN_IDS } from '@/lib/config'; // use shared config
 
 export default function AdminDashboard() {
   const { data: session, status } = useSession();
@@ -50,22 +42,25 @@ export default function AdminDashboard() {
     return () => window.removeEventListener("mousemove", moveCursor);
   }, [mouseX, mouseY]);
 
+  const openApplication = (app: any) => setSelectedApp(app);
+
   // --- 2. DATA FETCHING (SATELLITE SYNC) ---
   const fetchData = async () => {
     setLoading(true);
     try {
       // Fetch Apps
-      const appRes = await fetch('/api/admin/applications');
+      const appRes = await fetch('/api/admin/applications', { cache: "no-store" });
       const apps = await appRes.json();
       if (Array.isArray(apps)) setApplications(apps);
 
       // Fetch Role Locks
-      const roleRes = await fetch('/api/admin/toggle-role');
-      const roleData = await roleRes.json();
-      const settingsMap: Record<string, boolean> = {};
-      if (Array.isArray(roleData)) {
-        roleData.forEach((r: any) => settingsMap[r.role_id] = r.is_open);
-      }
+      const roleRes = await fetch('/api/admin/toggle-role', { cache: "no-store" });
+      const rolePayload = await roleRes.json();
+
+      const settingsMap: Record<string, boolean> = Array.isArray(rolePayload)
+        ? Object.fromEntries(rolePayload.map((r: any) => [r.role_id, Boolean(r.is_open)]))
+        : (rolePayload?.settings || {});
+
       setRoleSettings(settingsMap);
     } catch (err) {
       console.error("Fetch Error:", err);
@@ -104,18 +99,30 @@ export default function AdminDashboard() {
           status: decision 
         }),
       });
-      
+
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const finalStatus = decision === 'reset' ? 'pending' : decision;
-        setApplications(prev => prev.map(app => 
-          app.id === id ? { ...app, status: finalStatus } : app
+        setApplications(prev => prev.map(app =>
+          app.id === id
+            ? {
+                ...app,
+                status: data?.application?.status ?? (decision === 'reset' ? 'pending' : decision),
+                audit_note: data?.application?.audit_note ?? app.audit_note
+              }
+            : app
         ));
-        if (selectedApp?.id === id) setSelectedApp(null);
+        if (selectedApp?.id === id) {
+          setSelectedApp((prev: any) => prev ? {
+            ...prev,
+            status: data?.application?.status ?? (decision === 'reset' ? 'pending' : decision),
+            audit_note: data?.application?.audit_note ?? prev.audit_note
+          } : prev);
+        }
       } else {
-        alert("Satellite uplink rejected the decision.");
+        alert(data?.error || "Decision failed.");
       }
-    } catch (error) {
-      alert("Action Failed: Connection to Hive Core lost.");
+    } catch {
+      alert("Action failed.");
     } finally {
       setProcessingId(null);
     }
@@ -304,8 +311,31 @@ export default function AdminDashboard() {
                     <div className={`text-[10px] font-bold uppercase mb-1 ${app.status === 'approved' ? 'text-green-500' : app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'}`}>{app.status}</div>
                     <div className="text-[8px] text-neutral-600 italic font-medium">{app.audit_note || 'Awaiting Command Review'}</div>
                   </td>
-                  <td className="p-6 text-right">
-                    <button onClick={() => setSelectedApp(app)} className="px-4 py-2 border border-white/10 hover:border-yellow-500 text-[10px] font-black uppercase tracking-widest transition-all">Review</button>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => openApplication(app)}
+                      className="px-3 py-1.5 rounded-lg border border-white/15 text-neutral-200 hover:bg-white/5"
+                    >
+                      View
+                    </button>
+
+                    {app.status !== "pending" && (
+                      <button
+                        onClick={() => handleDecision(app.id, 'reset')}
+                        disabled={processingId === app.id}
+                        className="ml-2 px-3 py-1.5 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 disabled:opacity-50"
+                      >
+                        {processingId === app.id ? "Resetting..." : "Reset"}
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDeleteApplication(String(app.id))}
+                      disabled={deletingId === String(app.id)}
+                      className="ml-2 px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+                    >
+                      {deletingId === String(app.id) ? "Deleting..." : "Delete"}
+                    </button>
                   </td>
                 </tr>
               ))}

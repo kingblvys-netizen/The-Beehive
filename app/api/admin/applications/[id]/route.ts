@@ -2,14 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { sql } from "@vercel/postgres";
 import { authOptions } from "@/lib/auth";
-
-const ADMIN_IDS = [
-  "1208908529411301387",
-  "1406555930769756161",
-  "1241945084346372247",
-  "845669772926779392",
-  "417331086369226752",
-];
+import { ADMIN_IDS } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

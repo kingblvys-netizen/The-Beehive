@@ -104,8 +104,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       }
 
       const result = await response.json();
-      // Generate a receipt ID if the backend didn't send one
-      setTransactionId(result.application?.id || Math.random().toString(36).substring(7).toUpperCase());
+      setTransactionId(String(result.id || result.application?.id || Math.random().toString(36).substring(7).toUpperCase()));
       setSubmissionStatus("SUCCESS");
       localStorage.removeItem(`hive_draft_${resolvedParams.id}`);
       setTimeout(() => router.push("/"), 5000);
