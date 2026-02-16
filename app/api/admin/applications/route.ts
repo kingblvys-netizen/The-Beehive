@@ -35,3 +35,41 @@ export async function GET() {
     return NextResponse.json({ message: 'Database Satellite Uplink Failed' }, { status: 500 });
   }
 }
+
+const coerceAnswers = (raw: unknown): Record<string, unknown> => {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+};
+
+// Example: ensure answers is selected from DB
+// Prisma example:
+// const apps = await prisma.application.findMany({
+//   orderBy: { createdAt: "desc" },
+//   select: {
+//     id: true,
+//     username: true,
+//     discord_id: true,
+//     role_id: true,
+//     role_title: true,
+//     status: true,
+//     answers: true, // <-- REQUIRED
+//     createdAt: true,
+//   },
+// });
+
+// ...existing code...
+// Removed invalid top-level return; response code must live inside an exported route handler.
+// ...existing code...

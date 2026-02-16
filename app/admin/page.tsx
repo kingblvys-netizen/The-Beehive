@@ -372,16 +372,28 @@ export default function AdminDashboard() {
 
 const normalizeAnswers = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
-  if (typeof raw === 'string') {
+
+  if (typeof raw === "string") {
     try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+      return normalizeAnswers(JSON.parse(raw));
     } catch {
       return {};
     }
   }
-  if (typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
+
+  if (Array.isArray(raw)) {
+    const out: Record<string, unknown> = {};
+    for (const item of raw) {
+      if (item && typeof item === "object") {
+        const i = item as Record<string, unknown>;
+        const key = String(i.questionId ?? i.id ?? i.question ?? "");
+        const val = i.answer ?? i.value ?? "";
+        if (key) out[key] = val;
+      }
+    }
+    return out;
   }
+
+  if (typeof raw === "object") return raw as Record<string, unknown>;
   return {};
 };
