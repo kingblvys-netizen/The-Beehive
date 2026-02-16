@@ -5,8 +5,9 @@ import { sql } from "@/lib/db";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
+  const userId = (session?.user as { id?: string } | undefined)?.id;
 
-  if (!session || !session.user?.id) {
+  if (!session || !userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
 
   const result = await sql`
     INSERT INTO applications (user_id, answers)
-    VALUES (${session.user.id}, ${JSON.stringify(answers)})
+    VALUES (${userId}, ${JSON.stringify(answers)})
     RETURNING *;
   `;
 

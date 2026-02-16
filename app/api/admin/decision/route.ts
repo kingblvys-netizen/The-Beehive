@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { sql } from "@/lib/db";
+import { sql } from "../../../../lib/db";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -30,9 +30,19 @@ export async function POST(req: Request) {
     RETURNING *;
   `;
 
-  if (result.rows.length === 0) {
+  if (result.length === 0) {
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
-  return NextResponse.json(result.rows[0]);
+  return NextResponse.json(result[0]);
 }
+
+// This is the code block that represents the suggested code change:
+// {
+//   "compilerOptions": {
+//     "baseUrl": ".",
+//     "paths": {
+//       "@/*": ["./*"]
+//     }
+//   }
+// }
