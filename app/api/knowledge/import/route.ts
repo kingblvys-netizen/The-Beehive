@@ -6,8 +6,9 @@ import {
   createUniqueSlug,
   ensureKnowledgeTable,
   getSessionAdminId,
-  isAdminSession,
 } from "@/lib/knowledge";
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +88,8 @@ function parseBulkSections(rawText: string, defaultCategory: string): BulkSectio
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !isAdminSession(session)) {
+    const access = await getSessionAccessInfo(session);
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -123,6 +125,15 @@ export async function POST(req: Request) {
         created.push(result.rows[0] as { id: number; slug: string; title: string; category: string });
       }
     }
+
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: session.user?.name,
+      actorRole: access.role,
+      area: "knowledge",
+      action: "bulk-import",
+      metadata: { importedCount: created.length, category: defaultCategory, published },
+    });
 
     return NextResponse.json({
       ok: true,

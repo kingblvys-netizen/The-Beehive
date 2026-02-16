@@ -4,10 +4,11 @@ import { sql } from "@vercel/postgres";
 import { authOptions } from "@/lib/auth";
 import {
   ensureKnowledgeTable,
-  isAdminSession,
   createUniqueSlug,
   getSessionAdminId,
 } from "@/lib/knowledge";
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,17 +24,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const access = await getSessionAccessInfo(session);
+    if (!access.canAccessKnowledge) {
+      return NextResponse.json({ error: "Knowledge access required" }, { status: 403 });
+    }
+
     await ensureKnowledgeTable();
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
     const category = (searchParams.get("category") || "").trim().toLowerCase();
-    const isAdmin = isAdminSession(session);
+    const canEdit = access.canAccessAdmin;
 
     const list = await sql`
       SELECT id, slug, title, category, summary, content, published, created_by, updated_by, created_at, updated_at
       FROM knowledge_articles
-      WHERE (${isAdmin} = true OR published = true)
+      WHERE (${canEdit} = true OR published = true)
         AND (${category} = '' OR LOWER(category) = ${category})
         AND (
           ${q} = ''
@@ -46,7 +52,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       articles: list.rows,
-      canEdit: isAdmin,
+      canEdit,
     });
   } catch (err: unknown) {
     console.error("[knowledge/articles] GET error:", toErrorMessage(err));
@@ -57,7 +63,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !isAdminSession(session)) {
+    const access = await getSessionAccessInfo(session);
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -82,6 +89,16 @@ export async function POST(req: Request) {
       VALUES (${slug}, ${title}, ${category || "general"}, ${summary || null}, ${content}, ${published}, ${actor}, ${actor})
       RETURNING id, slug, title, category, summary, content, published, created_by, updated_by, created_at, updated_at
     `;
+
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: session.user?.name,
+      actorRole: access.role,
+      area: "knowledge",
+      action: "create-article",
+      target: String(created.rows[0]?.id || ""),
+      metadata: { slug, title, published },
+    });
 
     return NextResponse.json({ ok: true, article: created.rows[0] }, { status: 201 });
   } catch (err: unknown) {

@@ -46,7 +46,7 @@ export async function ensureKnowledgeTable() {
 
 export function getSessionAdminId(session: Session | null) {
   const user = session?.user as { id?: string; discordId?: string } | undefined;
-  return String(user?.id || user?.discordId || "");
+  return String(user?.discordId || user?.id || "");
 }
 
 export function isAdminSession(session: Session | null) {

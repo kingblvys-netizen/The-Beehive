@@ -3,7 +3,8 @@ import { Inter } from 'next/font/google';
 import { Providers } from '../providers';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { MAINTENANCE_MODE, ADMIN_IDS } from '@/lib/config';
+import { MAINTENANCE_MODE } from '@/lib/config';
+import { getSessionAccessInfo } from '@/lib/access';
 import { AlertTriangle, Cog } from 'lucide-react';
 import '../globals.css';
 
@@ -29,7 +30,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await getServerSession(authOptions);
-  const isAdmin = ADMIN_IDS.includes((session?.user as any)?.id);
+  const access = await getSessionAccessInfo(session);
+  const isAdmin = access.canAccessAdmin;
 
   // --- MAINTENANCE OVERLAY LOGIC ---
   const showMaintenance = MAINTENANCE_MODE && !isAdmin;

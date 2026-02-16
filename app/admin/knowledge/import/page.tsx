@@ -1,16 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ADMIN_IDS } from "@/lib/config";
 import { ChevronLeft, FileUp, ListChecks } from "lucide-react";
-
-type SessionUser = {
-  id?: string;
-  discordId?: string;
-};
 
 function countSections(raw: string) {
   const normalized = raw.replace(/\r\n/g, "\n").trim();
@@ -25,6 +19,7 @@ function countSections(raw: string) {
 export default function KnowledgeBulkImportPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
 
   const [rawText, setRawText] = useState("");
   const [category, setCategory] = useState("general");
@@ -32,8 +27,20 @@ export default function KnowledgeBulkImportPage() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ importedCount: number; imported: Array<{ id: number; title: string; slug: string }> } | null>(null);
 
-  const sessionUser = (session?.user || {}) as SessionUser;
-  const isAdmin = ADMIN_IDS.includes(String(sessionUser.id || sessionUser.discordId || ""));
+  useEffect(() => {
+    const loadAccess = async () => {
+      try {
+        const res = await fetch("/api/admin/access/me", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+      } catch {
+        setCanAccessAdmin(false);
+      }
+    };
+
+    if (status === "authenticated") loadAccess();
+    if (status === "unauthenticated") setCanAccessAdmin(false);
+  }, [status]);
 
   const estimatedSections = useMemo(() => countSections(rawText), [rawText]);
 
@@ -69,11 +76,11 @@ export default function KnowledgeBulkImportPage() {
     }
   };
 
-  if (status === "loading") {
+  if (status === "loading" || canAccessAdmin === null) {
     return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading...</div>;
   }
 
-  if (!session || !isAdmin) {
+  if (!session || !canAccessAdmin) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
         <div className="text-center">
@@ -85,7 +92,7 @@ export default function KnowledgeBulkImportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-mono">
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>

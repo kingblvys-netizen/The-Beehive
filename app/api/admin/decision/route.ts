@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { ADMIN_IDS } from '@/lib/config';
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 type AdminDecisionBody = {
   applicationId?: number | string;
@@ -17,10 +18,10 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const adminUser = session?.user as { id?: string; discordId?: string; name?: string | null } | undefined;
-    const adminId = String(adminUser?.id || adminUser?.discordId || "");
+    const access = await getSessionAccessInfo(session);
 
     // --- SECURITY GATE ---
-    if (!session || !ADMIN_IDS.includes(adminId)) {
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: 'Unauthorized: Admin Clearance Required' }, { status: 401 });
     }
 
@@ -49,6 +50,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Record not found in core' }, { status: 404 });
       }
 
+      await logAdminActivity({
+        actorId: access.discordId,
+        actorName: adminUser?.name,
+        actorRole: access.role,
+        area: "applications",
+        action: "purge",
+        target: String(applicationId),
+      });
+
       return NextResponse.json({ 
         ok: true, 
         message: 'Record successfully purged. Candidate may re-apply.' 
@@ -76,6 +86,16 @@ export async function POST(req: Request) {
     if (updateResult.rowCount === 0) {
       return NextResponse.json({ error: 'Identity matching failed' }, { status: 404 });
     }
+
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: adminUser?.name,
+      actorRole: access.role,
+      area: "applications",
+      action: status,
+      target: String(applicationId),
+      metadata: { finalStatus },
+    });
 
     return NextResponse.json({ 
       ok: true, 

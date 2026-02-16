@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ADMIN_IDS } from "@/lib/config";
 import { BookOpen, ChevronLeft, Copy, Eye, Files, PenSquare, Plus, Save, Search, Trash2 } from "lucide-react";
 import MarkdownContent from "@/app/knowledge/components/MarkdownContent";
 
@@ -17,11 +16,6 @@ type Article = {
   content: string;
   published: boolean;
   updated_at: string;
-};
-
-type SessionUser = {
-  id?: string;
-  discordId?: string;
 };
 
 type FormState = {
@@ -89,6 +83,8 @@ export default function AdminKnowledgePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [selected, setSelected] = useState<Article | null>(null);
   const [query, setQuery] = useState("");
@@ -101,8 +97,23 @@ export default function AdminKnowledgePage() {
   const [copied, setCopied] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const sessionUser = (session?.user || {}) as SessionUser;
-  const isAdmin = ADMIN_IDS.includes(String(sessionUser.id || sessionUser.discordId || ""));
+  useEffect(() => {
+    const loadAccess = async () => {
+      try {
+        const res = await fetch("/api/admin/access/me", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+      } catch {
+        setCanAccessAdmin(false);
+      }
+    };
+
+    if (status === "authenticated") loadAccess();
+    if (status === "unauthenticated") {
+      setCanAccessAdmin(false);
+      setLoading(false);
+    }
+  }, [status]);
 
   const loadArticles = async (search = "") => {
     setLoading(true);
@@ -116,10 +127,13 @@ export default function AdminKnowledgePage() {
   };
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" && canAccessAdmin) {
       loadArticles();
     }
-  }, [status]);
+    if (status === "authenticated" && canAccessAdmin === false) {
+      setLoading(false);
+    }
+  }, [status, canAccessAdmin]);
 
   useEffect(() => {
     if (!selected) {
@@ -319,11 +333,11 @@ export default function AdminKnowledgePage() {
     return () => window.removeEventListener("keydown", onKeydown);
   }, [onSave]);
 
-  if (status === "loading" || loading) {
+  if (status === "loading" || canAccessAdmin === null || loading) {
     return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">Loading knowledge base...</div>;
   }
 
-  if (!session || !isAdmin) {
+  if (!session || !canAccessAdmin) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
         <div className="text-center">
@@ -335,7 +349,7 @@ export default function AdminKnowledgePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-mono">
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>

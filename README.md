@@ -38,8 +38,10 @@ The app now includes an internal Knowledge Base so your team can manage docs dir
 - Auto-save drafts, duplicate article workflow, and copy-link sharing
 - Mobile-friendly editing/reading controls and touch targets
 - Access control:
-	- Authenticated users can read published content
-	- Admin IDs can create/edit/delete content
+	- Staff and higher can read Knowledge Base content
+	- Managers/Admin can create/edit/delete content
+	- Access is managed in Admin Panel via Discord ID role assignment (Staff/Manager)
+	- Access actions are tracked in admin activity logs (Access Audit)
 
 ### Storage
 
@@ -47,7 +49,7 @@ Articles are stored in a `knowledge_articles` PostgreSQL table. The table is aut
 
 ### Data Minimization
 
-- Applications store only Discord user ID, Discord username, role metadata, and application answers.
+- Applications store Discord ID as applicant identity; Discord username is not persisted.
 - Identity-like fields in submitted `answers` are stripped server-side to avoid duplicated personal data storage.
 - Knowledge Base content is stored with admin author/update identifiers for auditability.
 

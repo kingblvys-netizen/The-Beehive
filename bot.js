@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const dotenv = require('dotenv');
 const path = require('path');

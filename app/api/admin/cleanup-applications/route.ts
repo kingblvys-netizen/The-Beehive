@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { sql } from "@vercel/postgres";
 import { authOptions } from "@/lib/auth";
-import { ADMIN_IDS, APPLICATION_RETENTION_DAYS } from "@/lib/config";
+import { APPLICATION_RETENTION_DAYS } from "@/lib/config";
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,10 +15,6 @@ type CleanupRequest = {
   includeDeclined?: boolean;
   includeReset?: boolean;
 };
-
-function isAdminDiscordId(input: string) {
-  return ADMIN_IDS.includes(String(input || ""));
-}
 
 function toErrorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
@@ -34,10 +32,9 @@ function isCronAuthorized(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; discordId?: string } | undefined;
-    const adminId = String(user?.id || user?.discordId || "");
+    const access = await getSessionAccessInfo(session);
 
-    const isSessionAdmin = !!session && isAdminDiscordId(adminId);
+    const isSessionAdmin = !!session && access.canAccessAdmin;
     const isCron = isCronAuthorized(req);
 
     if (!isSessionAdmin && !isCron) {
@@ -72,6 +69,17 @@ export async function POST(req: Request) {
           )
       `;
 
+      if (isSessionAdmin && session) {
+        await logAdminActivity({
+          actorId: access.discordId,
+          actorName: session.user?.name,
+          actorRole: access.role,
+          area: "cleanup",
+          action: "dry-run",
+          metadata: { days, includeDeclined, includeReset, willDelete: preview.rows[0]?.count ?? 0 },
+        });
+      }
+
       return NextResponse.json({
         ok: true,
         dryRun: true,
@@ -92,6 +100,17 @@ export async function POST(req: Request) {
         )
       RETURNING id
     `;
+
+    if (isSessionAdmin && session) {
+      await logAdminActivity({
+        actorId: access.discordId,
+        actorName: session.user?.name,
+        actorRole: access.role,
+        area: "cleanup",
+        action: "execute",
+        metadata: { days, includeDeclined, includeReset, deletedCount: deleted.rowCount ?? 0 },
+      });
+    }
 
     return NextResponse.json({
       ok: true,

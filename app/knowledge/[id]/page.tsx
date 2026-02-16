@@ -19,6 +19,7 @@ type Article = {
 export default function KnowledgeArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [error, setError] = useState("");
+  const [accessDenied, setAccessDenied] = useState(false);
   const [loading, setLoading] = useState(true);
   const { data: session, status } = useSession();
 
@@ -26,11 +27,15 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
     const load = async () => {
       setLoading(true);
       setError("");
+      setAccessDenied(false);
       try {
         const p = await params;
         const res = await fetch(`/api/knowledge/articles/${encodeURIComponent(p.id)}`, { cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (res.status === 403) {
+            setAccessDenied(true);
+          }
           throw new Error(data?.error || "Failed to load article");
         }
         setArticle(data?.article || null);
@@ -63,6 +68,20 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6">
+        <div className="max-w-3xl mx-auto">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mb-6 min-h-10">
+            <ChevronLeft size={14} /> Back to Home
+          </Link>
+          <div className="text-yellow-400 uppercase text-sm tracking-widest">Knowledge access required</div>
+          <p className="mt-3 text-neutral-400">Only users added as Staff or Managers/Admin through the admin panel can access the Knowledge Base.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!article) {
     return (
       <div className="min-h-screen bg-[#050505] text-white p-4 md:p-6">
@@ -77,7 +96,7 @@ export default function KnowledgeArticlePage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-mono">
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
       <article className="max-w-4xl mx-auto pb-10">
         <Link href="/knowledge" className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-yellow-400 mb-6 min-h-10">
           <ChevronLeft size={14} /> Back to Knowledge Base

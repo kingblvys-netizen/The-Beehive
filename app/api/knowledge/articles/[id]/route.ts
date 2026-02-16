@@ -4,10 +4,11 @@ import { sql } from "@vercel/postgres";
 import { authOptions } from "@/lib/auth";
 import {
   ensureKnowledgeTable,
-  isAdminSession,
   createUniqueSlug,
   getSessionAdminId,
 } from "@/lib/knowledge";
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,16 +27,21 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const access = await getSessionAccessInfo(session);
+    if (!access.canAccessKnowledge) {
+      return NextResponse.json({ error: "Knowledge access required" }, { status: 403 });
+    }
+
     await ensureKnowledgeTable();
 
     const { id } = await params;
-    const isAdmin = isAdminSession(session);
+    const canEdit = access.canAccessAdmin;
 
     const article = await sql`
       SELECT id, slug, title, category, summary, content, published, created_by, updated_by, created_at, updated_at
       FROM knowledge_articles
       WHERE (id::text = ${id} OR slug = ${id})
-        AND (${isAdmin} = true OR published = true)
+        AND (${canEdit} = true OR published = true)
       LIMIT 1
     `;
 
@@ -43,7 +49,7 @@ export async function GET(
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ article: article.rows[0], canEdit: isAdmin });
+    return NextResponse.json({ article: article.rows[0], canEdit });
   } catch (err: unknown) {
     console.error("[knowledge/article] GET error:", toErrorMessage(err));
     return NextResponse.json({ error: "Failed to load article" }, { status: 500 });
@@ -56,7 +62,8 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !isAdminSession(session)) {
+    const access = await getSessionAccessInfo(session);
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -96,6 +103,16 @@ export async function PUT(
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
     }
 
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: session.user?.name,
+      actorRole: access.role,
+      area: "knowledge",
+      action: "update-article",
+      target: String(updated.rows[0]?.id || id),
+      metadata: { slug, title, published },
+    });
+
     return NextResponse.json({ ok: true, article: updated.rows[0] });
   } catch (err: unknown) {
     console.error("[knowledge/article] PUT error:", toErrorMessage(err));
@@ -109,7 +126,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !isAdminSession(session)) {
+    const access = await getSessionAccessInfo(session);
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -126,6 +144,15 @@ export async function DELETE(
     if (!deleted.rows.length) {
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
     }
+
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: session.user?.name,
+      actorRole: access.role,
+      area: "knowledge",
+      action: "delete-article",
+      target: String(deleted.rows[0]?.id || id),
+    });
 
     return NextResponse.json({ ok: true, id: deleted.rows[0].id });
   } catch (err: unknown) {

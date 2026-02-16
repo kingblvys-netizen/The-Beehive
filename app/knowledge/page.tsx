@@ -17,6 +17,7 @@ type Article = {
 export default function KnowledgeIndexPage() {
   const { data: session, status } = useSession();
   const [articles, setArticles] = useState<Article[]>([]);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -26,7 +27,13 @@ export default function KnowledgeIndexPage() {
       setLoading(true);
       try {
         const res = await fetch("/api/knowledge/articles", { cache: "no-store" });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (res.status === 403) setAccessDenied(true);
+          setArticles([]);
+          return;
+        }
+        setAccessDenied(false);
         setArticles(Array.isArray(data?.articles) ? data.articles : []);
       } finally {
         setLoading(false);
@@ -68,8 +75,20 @@ export default function KnowledgeIndexPage() {
     );
   }
 
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <h1 className="text-2xl font-black uppercase tracking-widest mb-3">Knowledge Base</h1>
+          <p className="text-neutral-400 mb-5">You are signed in, but not on the Staff/Managers access list yet.</p>
+          <p className="text-xs uppercase tracking-widest text-yellow-400">Ask a Manager/Admin to grant Staff access in Admin Panel.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-mono">
+    <div className="min-h-screen bg-[#050505] text-white p-4 md:p-8 font-sans">
       <div className="max-w-5xl mx-auto pb-8">
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest flex items-center gap-3">

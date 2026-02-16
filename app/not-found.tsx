@@ -1,6 +1,6 @@
 "use client";
 import { motion } from 'framer-motion';
-import { Hexagon, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function NotFound() {

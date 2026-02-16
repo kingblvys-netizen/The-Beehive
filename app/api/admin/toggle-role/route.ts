@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { ADMIN_IDS } from "@/lib/config";
+import { getSessionAccessInfo } from "@/lib/access";
+import { logAdminActivity } from "@/lib/audit";
 
 type ToggleRoleBody = {
   roleId?: string;
@@ -20,10 +21,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; discordId?: string } | undefined;
-    const adminId = user?.id || user?.discordId;
+    const access = await getSessionAccessInfo(session);
 
-    if (!session || !ADMIN_IDS.includes(String(adminId))) {
+    if (!session || !access.canAccessAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,6 +38,15 @@ export async function POST(req: Request) {
       ON CONFLICT (role_id)
       DO UPDATE SET is_open = EXCLUDED.is_open;
     `;
+
+    await logAdminActivity({
+      actorId: access.discordId,
+      actorName: session.user?.name,
+      actorRole: access.role,
+      area: "recruitment-roles",
+      action: isOpen ? "open-role" : "lock-role",
+      target: roleId,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -6,11 +6,12 @@ import { notFound, useRouter } from 'next/navigation';
 import { useSession, signIn } from "next-auth/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Hexagon, ChevronRight, CheckCircle2, ArrowLeft, 
-  Lock, Shield, AlertTriangle, Terminal, Send,
-  Database, Cpu, Zap, User, Fingerprint
+  ChevronRight, ArrowLeft,
+  Lock, Shield, Terminal, Send,
+  Database, Cpu, Zap, Fingerprint
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 type SessionUser = {
   id?: string;
@@ -29,7 +30,6 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [submissionStatus, setSubmissionStatus] = useState("IDLE"); // IDLE, SENDING, SUCCESS, ERROR
   const [transactionId, setTransactionId] = useState("");
-  const [isScanning, setIsScanning] = useState(false);
   const [existingApplication, setExistingApplication] = useState<{ id: number; status: string } | null>(null);
   const [redirectTimerId, setRedirectTimerId] = useState<number | null>(null);
 
@@ -64,20 +64,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     }
   }, [session]);
 
-  // --- 3. KEYBOARD NAV ---
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey && isStepComplete) {
-        if (currentStep < totalPages - 1) {
-          setCurrentStep(s => s + 1);
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentStep, formData]);
-
-  // --- 4. LOGIC & VALIDATION ---
+  // --- 3. LOGIC & VALIDATION ---
   const questions = getQuestions(role!.id);
   const totalPages = questions.length;
   const q = questions[currentStep];
@@ -90,6 +77,19 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       : q.type === "textarea"
       ? currentValue.length >= 8
       : currentValue.length >= 2;
+
+  // --- 4. KEYBOARD NAV ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey && isStepComplete) {
+        if (currentStep < totalPages - 1) {
+          setCurrentStep((step) => step + 1);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentStep, isStepComplete, totalPages]);
 
   // Data Density Meter
   const getDataDensity = (val: string) => {
@@ -105,7 +105,6 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     if (!role) return;
 
     setSubmissionStatus("SENDING");
-    setIsScanning(true);
     
     try {
       const response = await fetch("/api/apply", {
@@ -131,8 +130,6 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       setRedirectTimerId(timerId);
     } catch {
       setSubmissionStatus("ERROR");
-    } finally {
-      setIsScanning(false);
     }
   };
 
@@ -190,7 +187,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
           </div>
           <div className="w-10 h-10 rounded-lg border border-white/5 bg-white/5 flex items-center justify-center">
             {session?.user?.image ? (
-              <img src={session.user.image} className="rounded-md" alt="User" />
+              <Image src={session.user.image} className="rounded-md" alt="User" width={40} height={40} />
             ) : (
               <Fingerprint className="text-neutral-700" size={20} />
             )}

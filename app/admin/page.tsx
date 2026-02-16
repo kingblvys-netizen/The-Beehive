@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from "next-auth/react";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,21 +8,15 @@ import { motion, AnimatePresence, useSpring, useMotionValue } from 'framer-motio
 import { 
   Hexagon, Shield, Search, XCircle, 
   CheckCircle2, XSquare, Lock, Unlock, RefreshCw, 
-  AlertTriangle, Power, Activity, Target, PieChart, ExternalLink, BookOpen
+  AlertTriangle, Power, Activity, Target, PieChart, ExternalLink, BookOpen, ClipboardList
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
-import { ADMIN_IDS, APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
-
-type SessionUser = {
-  id?: string;
-  discordId?: string;
-  name?: string | null;
-};
+import { APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
 
 type ApplicationRecord = {
   id: number;
   discord_id: string;
-  username: string;
+  username?: string | null;
   role_id?: string;
   role_title: string;
   status: string;
@@ -37,9 +31,47 @@ type RoleSettingsPayload = {
   settings?: Record<string, boolean>;
 };
 
-function getAdminIdFromUser(user?: SessionUser) {
-  return String(user?.id || user?.discordId || "");
-}
+type ApplicationsPayload = {
+  applications?: ApplicationRecord[];
+  pagination?: {
+    page?: number;
+    pageSize?: number;
+    total?: number;
+    totalPages?: number;
+    hasPrev?: boolean;
+    hasNext?: boolean;
+  };
+};
+
+type AccessMePayload = {
+  authenticated?: boolean;
+  role?: "manager" | "staff" | null;
+  canAccessAdmin?: boolean;
+  canAccessKnowledge?: boolean;
+  discordId?: string;
+};
+
+type AccessEntry = {
+  discord_id: string;
+  role: "manager" | "staff";
+  source: "bootstrap" | "db";
+  added_by?: string | null;
+  updated_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type AccessAuditRow = {
+  id: number;
+  actor_id: string;
+  actor_name?: string | null;
+  actor_role?: string | null;
+  area: string;
+  action: string;
+  target?: string | null;
+  metadata?: unknown;
+  created_at: string;
+};
 
 export default function AdminDashboard() {
   const { data: session, status } = useSession();
@@ -50,7 +82,13 @@ export default function AdminDashboard() {
   const [roleSettings, setRoleSettings] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [selectedApp, setSelectedApp] = useState<ApplicationRecord | null>(null);
+  const [appDetailLoading, setAppDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved" | "declined" | "reset">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalApplications, setTotalApplications] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [cleanupDays, setCleanupDays] = useState<number>(APPLICATION_RETENTION_DAYS);
@@ -59,6 +97,15 @@ export default function AdminDashboard() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string>("");
   const [enableCursorFx, setEnableCursorFx] = useState(false);
+  const [canAccessAdmin, setCanAccessAdmin] = useState<boolean | null>(null);
+  const [accessEntries, setAccessEntries] = useState<AccessEntry[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [newAccessDiscordId, setNewAccessDiscordId] = useState("");
+  const [newAccessRole, setNewAccessRole] = useState<"manager" | "staff">("staff");
+  const [accessSubmitting, setAccessSubmitting] = useState(false);
+  const [accessAudit, setAccessAudit] = useState<AccessAuditRow[]>([]);
+  const [accessAuditLoading, setAccessAuditLoading] = useState(false);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100);
@@ -113,20 +160,163 @@ export default function AdminDashboard() {
     };
   }, [enableCursorFx, mouseX, mouseY]);
 
-  const openApplication = (app: ApplicationRecord) => setSelectedApp(app);
+  const openApplication = async (app: ApplicationRecord) => {
+    setSelectedApp(app);
+    setAppDetailLoading(true);
+
+    try {
+      const res = await fetch(`/api/admin/applications/${app.id}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to load application details");
+      }
+
+      const fullApp = data?.application as ApplicationRecord | undefined;
+      if (!fullApp) return;
+
+      setApplications((prev) => prev.map((row) => (row.id === app.id ? { ...row, ...fullApp } : row)));
+      setSelectedApp((prev) => (prev?.id === app.id ? { ...prev, ...fullApp } : prev));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to load application details";
+      alert(message);
+    } finally {
+      setAppDetailLoading(false);
+    }
+  };
+
+  const resolveAccess = async () => {
+    try {
+      const res = await fetch('/api/admin/access/me', { cache: 'no-store' });
+      const data = (await res.json().catch(() => ({}))) as AccessMePayload;
+      setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+    } catch {
+      setCanAccessAdmin(false);
+    }
+  };
+
+  const loadAccessEntries = async () => {
+    setAccessLoading(true);
+    try {
+      const res = await fetch('/api/admin/access', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setAccessEntries(Array.isArray(data?.entries) ? (data.entries as AccessEntry[]) : []);
+      }
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const loadAccessAudit = async () => {
+    setAccessAuditLoading(true);
+    try {
+      const res = await fetch('/api/admin/logs?area=access-control&limit=25', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setAccessAudit(Array.isArray(data?.logs) ? (data.logs as AccessAuditRow[]) : []);
+      }
+    } finally {
+      setAccessAuditLoading(false);
+    }
+  };
+
+  const upsertAccessEntry = async () => {
+    const discordId = newAccessDiscordId.trim();
+    if (!discordId) {
+      alert('Discord ID is required.');
+      return;
+    }
+
+    setAccessSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordId, role: newAccessRole }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to update access');
+      setNewAccessDiscordId('');
+      await loadAccessEntries();
+      await loadAccessAudit();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to update access';
+      alert(message);
+    } finally {
+      setAccessSubmitting(false);
+    }
+  };
+
+  const removeAccessEntry = async (discordId: string) => {
+    if (!confirm(`Remove access for ${discordId}?`)) return;
+    try {
+      const res = await fetch('/api/admin/access', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to remove access');
+      await loadAccessEntries();
+      await loadAccessAudit();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to remove access';
+      alert(message);
+    }
+  };
+
+  const changeAccessRole = async (discordId: string, role: "manager" | "staff") => {
+    try {
+      const res = await fetch('/api/admin/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordId, role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to update role');
+      await loadAccessEntries();
+      await loadAccessAudit();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to update role';
+      alert(message);
+    }
+  };
 
   // --- 2. DATA FETCHING (SATELLITE SYNC) ---
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const appParams = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(pageSize),
+        status: statusFilter,
+      });
+
+      const trimmedQuery = deferredSearchTerm.trim();
+      if (trimmedQuery) {
+        appParams.set("q", trimmedQuery);
+      }
+
       const [appRes, roleRes] = await Promise.all([
-        fetch('/api/admin/applications', { cache: "no-store" }),
+        fetch(`/api/admin/applications?${appParams.toString()}`, { cache: "no-store" }),
         fetch('/api/admin/toggle-role', { cache: "no-store" }),
       ]);
 
-      const apps = await appRes.json().catch(() => []);
-      if (appRes.ok && Array.isArray(apps)) {
-        setApplications(apps as ApplicationRecord[]);
+      const appPayload = (await appRes.json().catch(() => ({}))) as ApplicationsPayload | ApplicationRecord[];
+      if (appRes.ok) {
+        if (Array.isArray(appPayload)) {
+          setApplications(appPayload as ApplicationRecord[]);
+          setTotalApplications(appPayload.length);
+          setTotalPages(1);
+        } else {
+          setApplications(Array.isArray(appPayload?.applications) ? appPayload.applications : []);
+          const nextPage = Math.max(1, Number(appPayload?.pagination?.page || 1));
+          const nextTotal = Math.max(0, Number(appPayload?.pagination?.total || 0));
+          const nextTotalPages = Math.max(1, Number(appPayload?.pagination?.totalPages || 1));
+          setCurrentPage(nextPage);
+          setTotalApplications(nextTotal);
+          setTotalPages(nextTotalPages);
+        }
       }
 
       const rolePayload = (await roleRes.json().catch(() => ({}))) as RoleSettingsPayload | Array<{ role_id: string; is_open: boolean | null }>;
@@ -141,25 +331,52 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, pageSize, statusFilter, deferredSearchTerm]);
 
   useEffect(() => {
-    if (status === "authenticated") fetchData();
+    if (status === "authenticated") {
+      resolveAccess();
+    }
+    if (status === "unauthenticated") {
+      setCanAccessAdmin(false);
+      setLoading(false);
+    }
   }, [status]);
 
+  useEffect(() => {
+    if (status === "authenticated" && canAccessAdmin) {
+      loadAccessEntries();
+      loadAccessAudit();
+    }
+    if (status === "authenticated" && canAccessAdmin === false) {
+      setLoading(false);
+    }
+  }, [status, canAccessAdmin]);
+
+  useEffect(() => {
+    if (status === "authenticated" && canAccessAdmin) {
+      fetchData();
+    }
+  }, [status, canAccessAdmin, fetchData]);
+
   // --- 3. TACTICAL HUD STATS ---
-  const stats = {
-    pending: applications.filter(a => a.status === 'pending').length,
-    successRate: applications.length > 0 
-      ? Math.round((applications.filter(a => a.status === 'approved').length / applications.length) * 100) 
-      : 0,
-    mostPopular: applications.length > 0 ? Object.entries(
-      applications.reduce((acc, curr) => {
-        acc[curr.role_title] = (acc[curr.role_title] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>)
-    ).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A' : 'N/A'
-  };
+  const stats = useMemo(() => {
+    const pending = applications.filter((app) => app.status === 'pending').length;
+    const approved = applications.filter((app) => app.status === 'approved').length;
+    const successRate = applications.length > 0 ? Math.round((approved / applications.length) * 100) : 0;
+
+    const roleCount: Record<string, number> = {};
+    for (const app of applications) {
+      const key = app.role_title || 'unknown';
+      roleCount[key] = (roleCount[key] || 0) + 1;
+    }
+
+    const mostPopular = applications.length > 0
+      ? Object.entries(roleCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
+      : 'N/A';
+
+    return { pending, successRate, mostPopular };
+  }, [applications]);
 
   // --- 4. ACTIONS (APPROVE, DECLINE, RESET) ---
   const handleDecision = async (id: number, decision: string) => {
@@ -275,18 +492,17 @@ export default function AdminDashboard() {
     }
   };
 
-  // ACCESS GATE
-  const sessionUser = session?.user as SessionUser | undefined;
-  const sessionAdminId = getAdminIdFromUser(sessionUser);
+  const filteredApps = applications;
 
-  if (status === "loading" || loading) return (
+  // ACCESS GATE
+  if (status === "loading" || canAccessAdmin === null || loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
       <RefreshCw className="text-yellow-500 animate-spin" size={48} />
       <span className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Syncing Tactical Data...</span>
     </div>
   );
 
-  if (!session || !ADMIN_IDS.includes(sessionAdminId)) {
+  if (!session || !canAccessAdmin) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
         <Shield size={64} className="text-red-500 mb-6 animate-pulse" />
@@ -296,15 +512,8 @@ export default function AdminDashboard() {
     );
   }
 
-  const loweredSearch = searchTerm.toLowerCase();
-  const filteredApps = applications.filter((app) => 
-    (app.username || "").toLowerCase().includes(loweredSearch) ||
-    (app.discord_id || "").includes(searchTerm) ||
-    (app.role_title || "").toLowerCase().includes(loweredSearch)
-  );
-
   return (
-    <div className={`min-h-screen bg-[#050505] text-white font-mono selection:bg-yellow-500 selection:text-black relative antialiased ${enableCursorFx ? "cursor-none" : ""}`}>
+    <div className={`min-h-screen bg-[#050505] text-white font-sans selection:bg-yellow-500 selection:text-black relative antialiased ${enableCursorFx ? "cursor-none" : ""}`}>
       
       {/* CURSOR */}
       {enableCursorFx ? (
@@ -327,7 +536,20 @@ export default function AdminDashboard() {
             >
               <BookOpen size={12} /> Knowledge Base
             </Link>
-            <button onClick={fetchData} className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors">
+            <Link
+              href="/admin/logs"
+              className="px-3 py-2 border border-white/15 bg-white/5 text-neutral-200 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:border-yellow-500/30"
+            >
+              <ClipboardList size={12} /> Activity Logs
+            </Link>
+            <button
+              onClick={() => {
+                fetchData();
+                loadAccessEntries();
+                loadAccessAudit();
+              }}
+              className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors"
+            >
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
             </button>
             <div className="text-right">
@@ -451,20 +673,163 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {/* ACCESS CONTROL */}
+        <div className="mb-12 bg-neutral-900/30 border border-white/5 rounded-2xl p-5 md:p-6 backdrop-blur-md">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4 flex items-center gap-2">
+            <Shield size={12} /> Staff & Manager Access Control
+          </h3>
+          <p className="text-xs text-neutral-400 mb-4">
+            Staff can read Knowledge Base only. Managers/Admin can access the Admin Panel and create/edit Knowledge content.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <input
+              value={newAccessDiscordId}
+              onChange={(e) => setNewAccessDiscordId(e.target.value)}
+              placeholder="Discord ID (snowflake)"
+              className="md:col-span-2 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
+            />
+            <select
+              value={newAccessRole}
+              onChange={(e) => setNewAccessRole(e.target.value as "manager" | "staff")}
+              className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
+            >
+              <option value="staff">Staff (Knowledge Read)</option>
+              <option value="manager">Managers/Admin (Admin + Knowledge Edit)</option>
+            </select>
+            <button
+              onClick={upsertAccessEntry}
+              disabled={accessSubmitting}
+              className="px-3 py-2 border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 rounded-lg text-[10px] uppercase tracking-widest disabled:opacity-50"
+            >
+              {accessSubmitting ? "Saving..." : "Add / Update"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
+            {accessEntries.map((entry) => (
+              <div key={entry.discord_id} className="border border-white/10 rounded-xl p-3 bg-black/30">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-bold text-white break-all">{entry.discord_id}</div>
+                  <span className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded border ${entry.role === 'manager' ? 'border-yellow-500/40 text-yellow-300 bg-yellow-500/10' : 'border-blue-500/30 text-blue-300 bg-blue-500/10'}`}>
+                    {entry.role === 'manager' ? 'Managers/Admin' : 'Staff'}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-widest text-neutral-500">Source: {entry.source}</span>
+                  {entry.source !== 'bootstrap' ? (
+                    <div className="flex items-center gap-2">
+                      {entry.role !== 'manager' ? (
+                        <button
+                          onClick={() => changeAccessRole(entry.discord_id, 'manager')}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-yellow-500/40 bg-yellow-500/10 text-yellow-300"
+                        >
+                          Promote
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => changeAccessRole(entry.discord_id, 'staff')}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-blue-500/40 bg-blue-500/10 text-blue-300"
+                        >
+                          Set Staff
+                        </button>
+                      )}
+                      <button
+                        onClick={() => removeAccessEntry(entry.discord_id)}
+                        className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-red-300"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-widest text-neutral-600">Protected</span>
+                  )}
+                </div>
+                <div className="mt-2 text-[10px] uppercase tracking-widest text-neutral-600 space-y-1">
+                  {entry.updated_by ? <div>Updated by: {entry.updated_by}</div> : null}
+                  {entry.updated_at ? <div>Updated: {new Date(entry.updated_at).toLocaleString()}</div> : null}
+                </div>
+              </div>
+            ))}
+            {!accessLoading && accessEntries.length === 0 && (
+              <div className="text-xs text-neutral-500 uppercase tracking-widest">No access entries found.</div>
+            )}
+          </div>
+
+          <div className="mt-5 border border-white/10 rounded-xl bg-black/20 overflow-hidden">
+            <div className="px-3 py-2 border-b border-white/10 text-[10px] uppercase tracking-widest text-neutral-500 flex items-center justify-between">
+              <span>Access Audit</span>
+              {accessAuditLoading ? <span className="text-yellow-400">Syncing...</span> : null}
+            </div>
+            <div className="max-h-56 overflow-y-auto divide-y divide-white/5">
+              {accessAudit.map((log) => (
+                <div key={log.id} className="px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-neutral-300 uppercase tracking-widest">{log.action}</span>
+                    <span className="text-neutral-600">{new Date(log.created_at).toLocaleString()}</span>
+                  </div>
+                  <div className="text-neutral-500 break-all">
+                    {log.actor_name || log.actor_id} → {log.target || "-"}
+                  </div>
+                </div>
+              ))}
+              {!accessAuditLoading && accessAudit.length === 0 ? (
+                <div className="px-3 py-6 text-center text-[10px] uppercase tracking-widest text-neutral-600">
+                  No access audit events found.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
         {/* SEARCH & TABLE */}
-        <div className="mb-8 relative max-w-md group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-          <input 
-            type="text" 
-            placeholder="SEARCH DATABASE..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-neutral-900/50 border border-white/10 rounded-xl py-4 pl-12 pr-6 text-sm focus:border-yellow-500 outline-none transition-all placeholder:text-neutral-700 text-white font-bold uppercase tracking-widest"
-          />
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_160px] gap-3 items-center">
+          <div className="relative group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
+            <input 
+              type="text" 
+              placeholder="SEARCH DATABASE..." 
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full bg-neutral-900/50 border border-white/10 rounded-xl py-4 pl-12 pr-6 text-sm focus:border-yellow-500 outline-none transition-all placeholder:text-neutral-700 text-white font-bold uppercase tracking-widest"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as "all" | "pending" | "approved" | "declined" | "reset");
+              setCurrentPage(1);
+            }}
+            className="bg-neutral-900/50 border border-white/10 rounded-xl py-4 px-4 text-sm focus:border-yellow-500 outline-none text-white font-bold uppercase tracking-widest"
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="declined">Declined</option>
+            <option value="reset">Reset</option>
+          </select>
+
+          <select
+            value={String(pageSize)}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="bg-neutral-900/50 border border-white/10 rounded-xl py-4 px-4 text-sm focus:border-yellow-500 outline-none text-white font-bold uppercase tracking-widest"
+          >
+            <option value="25">25 / Page</option>
+            <option value="50">50 / Page</option>
+            <option value="100">100 / Page</option>
+          </select>
         </div>
 
         <div className="bg-neutral-900/30 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-md">
-          <table className="w-full text-left">
+          <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left min-w-[860px]">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.02] text-[9px] font-black uppercase text-neutral-500 tracking-widest">
                 <th className="p-6">Identity</th>
@@ -477,7 +842,7 @@ export default function AdminDashboard() {
               {filteredApps.map((app) => (
                 <tr key={app.id} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-6">
-                    <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
+                    <div className="font-bold text-white text-sm uppercase italic">{app.username?.trim() || "ID-ONLY APPLICANT"}</div>
                     <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
                       {app.discord_id} <ExternalLink size={10} />
                     </a>
@@ -492,7 +857,7 @@ export default function AdminDashboard() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openApplication(app)}
-                      className="px-3 py-1.5 rounded-lg border border-white/15 text-neutral-200 hover:bg-white/5"
+                      className="px-3 py-2 rounded-lg border border-white/15 text-neutral-200 hover:bg-white/5"
                     >
                       View
                     </button>
@@ -519,7 +884,77 @@ export default function AdminDashboard() {
               ))}
             </tbody>
           </table>
+          </div>
+
+          <div className="md:hidden divide-y divide-white/[0.06]">
+            {filteredApps.map((app) => (
+              <div key={app.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-bold text-white text-sm uppercase italic">{app.username?.trim() || "ID-ONLY APPLICANT"}</div>
+                    <div className="text-[11px] text-neutral-500 mt-1 break-all">{app.discord_id}</div>
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase ${app.status === 'approved' ? 'text-green-500' : app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'}`}>{app.status}</span>
+                </div>
+
+                <div className="mt-2 text-[10px] uppercase tracking-widest text-neutral-500">{app.role_title}</div>
+                <div className="mt-2 text-[10px] text-neutral-600 italic">{app.audit_note || 'Awaiting Command Review'}</div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => openApplication(app)}
+                    className="px-2 py-2 rounded-lg border border-white/15 text-neutral-200 hover:bg-white/5 text-[11px] uppercase"
+                  >
+                    View
+                  </button>
+
+                  {app.status !== 'pending' ? (
+                    <button
+                      onClick={() => handleDecision(app.id, 'reset')}
+                      disabled={processingId === app.id}
+                      className="px-2 py-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 disabled:opacity-50 text-[11px] uppercase"
+                    >
+                      Reset
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <button
+                    onClick={() => handleDeleteApplication(String(app.id))}
+                    disabled={deletingId === String(app.id)}
+                    className="px-2 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50 text-[11px] uppercase"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {filteredApps.length === 0 && <div className="py-24 text-center text-neutral-700 uppercase font-black tracking-widest text-xs opacity-50">Zero Records Found</div>}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+            Showing page {currentPage} / {totalPages} · {totalApplications} total records
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage <= 1}
+              className="px-3 py-2 rounded-lg border border-white/15 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-2 rounded-lg border border-white/15 text-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </main>
 
@@ -527,17 +962,25 @@ export default function AdminDashboard() {
       <AnimatePresence>
         {selectedApp && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-50">
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-[#0c0c0c] border border-white/10 p-10 rounded-[2.5rem] max-w-2xl w-full max-h-[85vh] overflow-y-auto relative shadow-2xl">
-              <button onClick={() => setSelectedApp(null)} className="absolute top-8 right-8 text-neutral-600 hover:text-white"><XCircle size={24} /></button>
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-[#0c0c0c] border border-white/10 p-5 md:p-10 rounded-2xl md:rounded-[2.5rem] max-w-2xl w-full max-h-[92vh] overflow-y-auto relative shadow-2xl">
+              <button onClick={() => setSelectedApp(null)} className="absolute top-4 right-4 md:top-8 md:right-8 text-neutral-600 hover:text-white"><XCircle size={24} /></button>
               
-              <div className="mb-10">
+              <div className="mb-8 md:mb-10">
                 <div className="text-yellow-500 text-[9px] font-black uppercase tracking-[0.4em] mb-4 flex items-center gap-2"><Shield size={12} /> Confidential Intelligence</div>
-                <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-4">{selectedApp.username}</h2>
+                <h2 className="text-2xl md:text-4xl font-black text-white uppercase italic tracking-tighter mb-4">{selectedApp.username?.trim() || "ID-ONLY APPLICANT"}</h2>
                 <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Applying for: <span className="text-white">{selectedApp.role_title}</span></div>
               </div>
               
               <div className="space-y-4 mb-10">
                 {(() => {
+                  if (appDetailLoading) {
+                    return (
+                      <div className="text-xs text-neutral-500 uppercase tracking-widest">
+                        Loading full application answers...
+                      </div>
+                    );
+                  }
+
                   const answersObj = normalizeAnswers(
                     selectedApp.answers ?? selectedApp.responses ?? selectedApp.application_answers
                   );

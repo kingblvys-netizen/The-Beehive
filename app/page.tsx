@@ -9,19 +9,9 @@ import { signIn, useSession, signOut } from "next-auth/react";
 import Link from 'next/link';
 import { roles as staticRoles } from './data'; 
 import { motion, AnimatePresence, useMotionValue, useSpring, type Variants } from 'framer-motion';
-import { ADMIN_IDS } from '@/lib/config';
 
 // --- CONFIGURATION ---
 const SITE_VERSION = "2.3.0-TACTICAL";
-
-type SessionUser = {
-  id?: string;
-  discordId?: string;
-};
-
-function getAdminIdFromUser(user?: SessionUser) {
-  return String(user?.id || user?.discordId || "");
-}
 
 // --- CUSTOM BRAND ICONS ---
 const DiscordIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
@@ -37,6 +27,8 @@ export default function Home() {
   const [submittedRoles, setSubmittedRoles] = useState<Record<string, string>>({});
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
   const [enableCursorFx, setEnableCursorFx] = useState(false);
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  const [canAccessKnowledge, setCanAccessKnowledge] = useState(false);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100); 
@@ -108,6 +100,26 @@ export default function Home() {
 
     loadRoleSettings();
     loadSubmittedRoles();
+
+    const loadAccess = async () => {
+      if (status !== "authenticated") {
+        setCanAccessAdmin(false);
+        setCanAccessKnowledge(false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/admin/access/me", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        setCanAccessAdmin(Boolean(data?.canAccessAdmin));
+        setCanAccessKnowledge(Boolean(data?.canAccessKnowledge));
+      } catch {
+        setCanAccessAdmin(false);
+        setCanAccessKnowledge(false);
+      }
+    };
+
+    loadAccess();
   }, [status]);
 
   // --- 3. INPUT TRACKING ---
@@ -149,9 +161,6 @@ export default function Home() {
       clickCleanupTimersRef.current = [];
     };
   }, [enableCursorFx, mouseX, mouseY]);
-
-  const sessionUser = session?.user as SessionUser | undefined;
-  const sessionAdminId = getAdminIdFromUser(sessionUser);
 
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -206,16 +215,23 @@ export default function Home() {
           <div className="flex items-center gap-6">
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
-                <Link
-                  href="/knowledge"
-                  onMouseEnter={() => setIsHovering(true)}
-                  onMouseLeave={() => setIsHovering(false)}
-                  className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
-                >
-                  <BookOpen size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Base</span>
-                </Link>
-                {ADMIN_IDS.includes(sessionAdminId) && (
+                {canAccessKnowledge ? (
+                  <Link
+                    href="/knowledge"
+                    onMouseEnter={() => setIsHovering(true)}
+                    onMouseLeave={() => setIsHovering(false)}
+                    className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+                  >
+                    <BookOpen size={16} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Base</span>
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-2 px-5 py-2 bg-white/5 text-neutral-500 border border-white/10 rounded-lg">
+                    <Lock size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Locked</span>
+                  </div>
+                )}
+                {canAccessAdmin && (
                   <Link href="/admin" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} 
                     className="flex items-center gap-2 px-5 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-[0_0_15px_#ef444433] group">
                     <Shield size={16} className="group-hover:animate-spin-slow" />
@@ -296,7 +312,7 @@ export default function Home() {
                   variants={itemVariants}
                   onMouseEnter={() => setIsHovering(role.isOpen && !isSubmitted)}
                   onMouseLeave={() => setIsHovering(false)}
-                  whileHover={role.isOpen && !isSubmitted ? { y: -8, scale: 1.01 } : {}}
+                  whileHover={enableCursorFx && role.isOpen && !isSubmitted ? { y: -8, scale: 1.01 } : {}}
                   className={`group bg-[#080808] border p-10 rounded-[2.5rem] transition-all duration-500 relative overflow-hidden ${
                     !role.isOpen
                       ? 'grayscale opacity-30 cursor-not-allowed border-white/5'

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 import { Activity, Database, Server, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_VERSION, CORE_SATELLITE } from '@/lib/config';
@@ -9,7 +8,6 @@ import { SITE_VERSION, CORE_SATELLITE } from '@/lib/config';
 export default function StatusPage() {
   const [dbStatus, setDbStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [latency, setLatency] = useState<number | null>(null);
-  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const checkCore = async () => {
@@ -30,7 +28,7 @@ export default function StatusPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-mono p-6 flex flex-col items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen bg-[#050505] text-white font-sans p-6 flex flex-col items-center justify-center relative overflow-hidden">
       {/* Background Grid */}
       <div className="absolute inset-0 opacity-10 pointer-events-none" 
            style={{ backgroundImage: 'radial-gradient(#FACC15 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
@@ -71,7 +69,7 @@ export default function StatusPage() {
         </div>
 
         {/* LOG PANEL */}
-        <div className="bg-black border border-white/10 p-6 rounded-2xl font-mono text-[10px] leading-relaxed">
+        <div className="bg-black border border-white/10 p-6 rounded-2xl text-[10px] leading-relaxed">
           <div className="flex items-center gap-2 mb-4 text-neutral-500">
             <Activity size={12} />
             <span className="uppercase font-black">System Feed</span>
@@ -84,9 +82,9 @@ export default function StatusPage() {
             <p className={dbStatus === 'online' ? "text-green-500/70" : "text-red-500"}>
               {dbStatus === 'online' ? "[ OK ] DB_LINK_ESTABLISHED" : "[ ERR ] DB_LINK_CRITICAL"}
             </p>
-            <motion.p animate={prefersReducedMotion ? undefined : { opacity: [1, 0.4, 1] }} transition={prefersReducedMotion ? undefined : { repeat: Infinity, duration: 1.5 }}>
+            <p className="animate-pulse">
               [ WAIT ] SCANNING NEURAL UPLINKS...
-            </motion.p>
+            </p>
           </div>
         </div>
 
