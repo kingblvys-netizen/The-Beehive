@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { sql } from "@/lib/db";
+import { sql } from "@vercel/postgres";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
+  const userId = (session?.user as { id?: string } | undefined)?.id;
 
-  if (!session || !session.user?.id) {
+  if (!session || !userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Simple admin check
-  if (session.user.id !== "yourdiscordid") {
+  if (userId !== "yourdiscordid") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
