@@ -7,32 +7,21 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const user = session?.user as any;
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userId = user.discordId || user.id;
-    const username = user.name || "Anonymous";
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const { roleTitle, answers } = body;
 
-    // Save to Database
     const result = await sql`
       INSERT INTO applications (discord_id, username, role_title, answers, status)
-      VALUES (${String(userId)}, ${username}, ${roleTitle}, ${JSON.stringify(answers)}, 'pending')
+      VALUES (${String(user.id)}, ${user.name}, ${roleTitle}, ${JSON.stringify(answers)}, 'pending')
       RETURNING id;
     `;
 
     return NextResponse.json({ ok: true, application: result.rows[0] }, { status: 201 });
-
-  } catch (err: any) {
-    console.error("Database Error:", err);
+  } catch (err) {
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ ok: true });
-}
+export async function GET() { return NextResponse.json({ ok: true }); }
