@@ -25,8 +25,8 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub ?? "";
-        session.user.discordId = (token.discordId as string) ?? "";
+        session.user.id = (token.sub as string) || (token.discordId as string) || "";
+        session.user.discordId = (token.discordId as string) || "";
       }
       return session;
     },

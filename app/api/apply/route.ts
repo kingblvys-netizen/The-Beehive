@@ -6,11 +6,22 @@ import { sql } from "@/lib/db";
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; discordId?: string; name?: string } | undefined;
-    const userId = user?.discordId ?? user?.id;
+    const user = session?.user as
+      | { id?: string; discordId?: string; name?: string; email?: string }
+      | undefined;
 
-    if (!session || !userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized: no session" }, { status: 401 });
+    }
+
+    const userId =
+      user?.discordId ||
+      user?.id ||
+      user?.email ||
+      user?.name;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized: no userId in session" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -28,16 +39,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, application: rows[0] }, { status: 201 });
   } catch (err: any) {
-    console.error("[/api/apply] error", {
-      message: err?.message,
-      code: err?.code,
-      detail: err?.detail,
-    });
-
-    return NextResponse.json(
-      { error: err?.message ?? "Failed to submit application" },
-      { status: 500 }
-    );
+    console.error("[/api/apply] error", err);
+    return NextResponse.json({ error: err?.message ?? "Failed to submit application" }, { status: 500 });
   }
 }
 

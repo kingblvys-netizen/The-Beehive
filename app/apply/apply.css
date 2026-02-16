@@ -52,11 +52,10 @@
 
 .bee-apply-bg {
   min-height: 100vh;
-  color: #fff8d6;
+  color: #fff;
   background:
-    radial-gradient(1200px 600px at 10% -15%, rgba(255, 217, 61, 0.30), transparent 60%),
-    radial-gradient(900px 500px at 95% 0%, rgba(250, 180, 20, 0.22), transparent 55%),
-    linear-gradient(180deg, #0a0a0a 0%, #11131a 45%, #0b0d12 100%);
+    radial-gradient(900px 480px at 50% -15%, rgba(255, 217, 0, 0.20), transparent 60%),
+    linear-gradient(180deg, #050505 0%, #090c12 100%);
   position: relative;
   overflow: hidden;
 }
@@ -64,37 +63,32 @@
 .bee-apply-bg::before {
   content: "";
   position: absolute;
-  inset: -20%;
-  background-image:
-    radial-gradient(circle at 20% 20%, rgba(255, 217, 61, 0.14), transparent 16%),
-    radial-gradient(circle at 80% 30%, rgba(255, 217, 61, 0.10), transparent 14%),
-    radial-gradient(circle at 30% 80%, rgba(255, 184, 28, 0.10), transparent 18%);
-  animation: beeGlow 10s ease-in-out infinite alternate;
+  inset: 0;
+  background-image: url("/hex-bg.svg"); /* use same asset as homepage */
+  background-size: 120px;
+  background-repeat: repeat;
+  opacity: 0.16;
+  animation: hexScroll 24s linear infinite;
   pointer-events: none;
 }
 
 .bee-apply-bg::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(30deg, rgba(255, 204, 0, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(255, 204, 0, 0.06) 87.5%, rgba(255, 204, 0, 0.06)),
-    linear-gradient(150deg, rgba(255, 204, 0, 0.06) 12%, transparent 12.5%, transparent 87%, rgba(255, 204, 0, 0.06) 87.5%, rgba(255, 204, 0, 0.06)),
-    linear-gradient(90deg, rgba(255, 204, 0, 0.04) 2%, transparent 2.5%, transparent 97%, rgba(255, 204, 0, 0.04) 97.5%, rgba(255, 204, 0, 0.04));
-  background-size: 48px 84px, 48px 84px, 48px 84px;
-  background-position: 0 0, 0 0, 24px 42px;
-  opacity: 0.22;
-  animation: hiveDrift 18s linear infinite;
+  inset: -20%;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 214, 10, 0.16), transparent 45%);
+  animation: glowPulse 6s ease-in-out infinite;
   pointer-events: none;
 }
 
 .bee-panel {
   position: relative;
-  border: 1px solid rgba(255, 217, 61, 0.35);
-  background: rgba(8, 8, 8, 0.52);
+  z-index: 1;
+  border: 1px solid rgba(255, 217, 0, 0.28);
+  background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(8px);
   border-radius: 16px;
-  box-shadow: 0 0 44px rgba(255, 204, 0, 0.15);
+  box-shadow: 0 0 36px rgba(255, 208, 0, 0.14);
 }
 
 @keyframes beeGlow {
@@ -105,4 +99,14 @@
 @keyframes hiveDrift {
   0% { transform: translateX(0) translateY(0); }
   100% { transform: translateX(-24px) translateY(-12px); }
+}
+
+@keyframes hexScroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-40px); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
 }
