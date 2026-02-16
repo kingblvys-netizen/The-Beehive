@@ -24,6 +24,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
   const [submissionStatus, setSubmissionStatus] = useState("IDLE"); // IDLE, SENDING, SUCCESS, ERROR
   const [transactionId, setTransactionId] = useState("");
   const [isScanning, setIsScanning] = useState(false);
+  const [existingApplication, setExistingApplication] = useState<{ id: number; status: string } | null>(null);
 
   // --- 2. NEURAL LINK: DRAFT AUTO-SAVE ---
   useEffect(() => {
@@ -115,6 +116,23 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  useEffect(() => {
+    const checkExisting = async () => {
+      if (status !== "authenticated" || !role) return;
+      try {
+        const res = await fetch(`/api/apply?roleId=${encodeURIComponent(role.id)}`, { cache: "no-store" });
+        const data = await res.json();
+        if (data?.applied) {
+          setExistingApplication(data.existing ?? null);
+          setSubmissionStatus("LOCKED");
+        }
+      } catch {
+        // no-op
+      }
+    };
+    checkExisting();
+  }, [status, role?.id]);
+
   if (status === "loading") return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <Cpu className="text-yellow-400 animate-pulse" size={48} />
@@ -153,7 +171,22 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       <main className="max-w-2xl mx-auto px-6 py-32 relative z-20 min-h-screen flex flex-col justify-center">
         <AnimatePresence mode="wait">
           
-          {submissionStatus === "SUCCESS" ? (
+          {submissionStatus === "LOCKED" ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+              <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-yellow-500/30">
+                <Lock className="text-yellow-400" size={34} />
+              </div>
+              <h2 className="text-3xl font-black uppercase mb-2">Already Submitted</h2>
+              <p className="text-neutral-500 text-sm max-w-md mx-auto">
+                You already submitted this role. An admin must reset/unlock your previous entry before you can apply again.
+              </p>
+              {existingApplication?.status && (
+                <p className="text-[11px] uppercase tracking-widest text-neutral-600 mt-4">
+                  Current status: <span className="text-yellow-400">{existingApplication.status}</span>
+                </p>
+              )}
+            </motion.div>
+          ) : submissionStatus === "SUCCESS" ? (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
               <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.3)]">
                 <Zap size={40} className="text-green-500 animate-pulse" />

@@ -44,11 +44,11 @@ export async function POST(req: Request) {
     // --- 2. RESET/DECISION PROTOCOL ---
     // 'reset' sets status back to 'pending'. Others (approved/declined) update as requested.
     const isReset = status === 'reset';
-    const finalStatus = isReset ? 'pending' : status;
+    const finalStatus = isReset ? 'reset' : status;
     
     // Generate a timestamped audit log for the dashboard
-    const auditNote = isReset 
-      ? `RESET protocol initiated by ${adminUser.name} on ${new Date().toLocaleDateString()}`
+    const auditNote = isReset
+      ? `RESET/UNLOCK by ${adminUser.name} on ${new Date().toLocaleDateString()}`
       : `${status.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
 
     const updateResult = await sql`

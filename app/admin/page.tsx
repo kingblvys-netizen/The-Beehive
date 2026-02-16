@@ -273,18 +273,6 @@ export default function AdminDashboard() {
           />
         </div>
 
-        {/* DATA TABLE */}
-        <div className="mb-8 relative max-w-md group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
-          <input 
-            type="text" 
-            placeholder="SEARCH DATABASE..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-neutral-900/50 border border-white/10 rounded-xl py-4 pl-12 pr-6 text-sm focus:border-yellow-500 outline-none transition-all placeholder:text-neutral-700 text-white font-bold uppercase tracking-widest"
-          />
-        </div>
-
         <div className="bg-neutral-900/30 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-md">
           <table className="w-full text-left">
             <thead>
