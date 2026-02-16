@@ -30,5 +30,9 @@ export async function POST(req: Request) {
     RETURNING *;
   `;
 
-  return NextResponse.json(result[0]);
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Application not found" }, { status: 404 });
+  }
+
+  return NextResponse.json(result.rows[0]);
 }
