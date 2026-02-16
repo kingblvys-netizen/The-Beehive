@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { roles as staticRoles } from './data'; 
 import { motion, AnimatePresence, useMotionValue, useSpring, type Variants } from 'framer-motion';
 
-// --- CONFIGURATION: UPDATED ADMIN LIST ---
+// --- CONFIGURATION: CENTRALIZED ADMIN LIST ---
 const ADMIN_IDS = [
   "1208908529411301387", // Syn
   "1406555930769756161", 
@@ -50,11 +50,12 @@ export default function Home() {
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100); 
   const mouseY = useMotionValue(-100);
+  // High stiffness + low mass = instant hardware tracking
   const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 }; 
   const cursorX = useSpring(mouseX, springConfig);
   const cursorY = useSpring(mouseY, springConfig);
 
-  // --- 2. LIVE ROLE DATA SYNC ---
+  // --- 2. LIVE ROLE DATA SYNC (SATELLITE SYNC) ---
   useEffect(() => {
     const syncSatelliteData = async () => {
       try {
@@ -62,6 +63,7 @@ export default function Home() {
         const dbSettings = await res.json();
         
         if (Array.isArray(dbSettings)) {
+          // Sync database status with frontend roles
           const merged = staticRoles.map(role => {
             const match = dbSettings.find(s => s.role_id === role.id);
             return match ? { ...role, isOpen: match.is_open } : role;
@@ -69,7 +71,7 @@ export default function Home() {
           setLiveRoles(merged);
         }
       } catch (err) {
-        console.warn("Signal Lost: Using cached role manifest.");
+        console.warn("Satellite Sync Failed - Using Cached Data");
       }
     };
 
@@ -191,7 +193,7 @@ export default function Home() {
             </p>
           </motion.div>
           
-          {/* --- STATS DASHBOARD --- */}
+          {/* --- STATS HUD --- */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-24 max-w-5xl mx-auto">
              {[
                { icon: Users, label: "Total Recruits", val: "4k+", color: "text-neutral-500" },
@@ -223,7 +225,9 @@ export default function Home() {
               const IconComponent = role.icon;
 
               return (
-                <motion.div key={role.id} variants={itemVariants} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}
+                <motion.div key={role.id} variants={itemVariants} 
+                  onMouseEnter={() => setIsHovering(role.isOpen && !isPending)} 
+                  onMouseLeave={() => setIsHovering(false)}
                   whileHover={role.isOpen && !isPending ? { y: -8, scale: 1.01 } : {}}
                   className={`group bg-[#080808] border p-10 rounded-[2.5rem] transition-all duration-500 relative overflow-hidden ${
                     !role.isOpen ? 'grayscale opacity-30 cursor-not-allowed border-white/5' : 
@@ -310,15 +314,9 @@ export default function Home() {
             </Link>
             
             <div className="flex items-center gap-8 border-l border-white/10 pl-12">
-              {[
-                { icon: DiscordIcon, link: "https://discord.gg/qR6kFuBhCh", hover: "hover:text-[#5865F2]" },
-                { icon: TwitchIcon, link: "https://www.twitch.tv/its_pupbee", hover: "hover:text-[#9146FF]" },
-                { icon: TikTokIcon, link: "https://www.tiktok.com/@its_pupbee?lang=en", hover: "hover:text-[#FE2C55]" }
-              ].map((social, i) => (
-                <a key={i} href={social.link} target="_blank" rel="noopener noreferrer" className={`text-neutral-700 transition-all hover:scale-125 ${social.hover}`}>
-                  <social.icon size={24} />
-                </a>
-              ))}
+              <a href="https://discord.gg/qR6kFuBhCh" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#5865F2]"><DiscordIcon size={24} /></a>
+              <a href="https://www.twitch.tv/its_pupbee" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#9146FF]"><TwitchIcon size={24} /></a>
+              <a href="https://www.tiktok.com/@its_pupbee?lang=en" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#FE2C55]"><TikTokIcon size={24} /></a>
             </div>
           </div>
         </div>

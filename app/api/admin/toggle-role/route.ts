@@ -1,25 +1,32 @@
-import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
-import { getServerSession } from "next-auth/next";
-
-const ADMIN_IDS = ["1208908529411301387", "1406555930769756161", "1241945084346372247"];
+import { sql } from '@vercel/postgres';
+import { getServerSession } from "next-auth";
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession();
-    const userId = (session?.user as any)?.id;
-
-    if (!session || !ADMIN_IDS.includes(userId)) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { roleId, isOpen } = await req.json();
 
-    // This updates the status in your database
-    await sql`UPDATE roles SET is_open = ${isOpen} WHERE id = ${roleId}`;
+    await sql`
+      INSERT INTO role_settings (role_id, is_open)
+      VALUES (${roleId}, ${isOpen})
+      ON CONFLICT (role_id) 
+      DO UPDATE SET is_open = ${isOpen};
+    `;
 
-    return NextResponse.json({ message: 'Status Updated' }, { status: 200 });
+    return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ message: 'Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  try {
+    const { rows } = await sql`SELECT * FROM role_settings`;
+    return NextResponse.json(rows);
+  } catch (error) {
+    return NextResponse.json([]);
   }
 }
