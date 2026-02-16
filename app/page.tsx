@@ -3,12 +3,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Hexagon, ChevronRight, LogOut, Clock, Users, Zap, 
-  Twitch, Activity 
+  Twitch, Activity, Shield 
 } from 'lucide-react';
 import { signIn, useSession, signOut } from "next-auth/react";
 import Link from 'next/link';
 import { roles } from './data';
 import { motion, AnimatePresence, Variants, useMotionValue, useSpring } from 'framer-motion';
+
+// --- CONFIGURATION: ADMIN ACCESS LIST ---
+const ADMIN_IDS = [
+  "1208908529411301387", // King B
+  "1406555930769756161", // Admin 2
+  "1241945084346372247"  // Admin 3
+];
 
 // --- CUSTOM BRAND ICONS ---
 const DiscordIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
@@ -30,10 +37,8 @@ export default function Home() {
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
 
   // --- OPTIMIZED CURSOR (NO LAG) ---
-  const mouseX = useMotionValue(-100); // Start off-screen
+  const mouseX = useMotionValue(-100); 
   const mouseY = useMotionValue(-100);
-
-  // High stiffness = follows mouse instantly with very slight organic smoothing
   const springConfig = { damping: 50, stiffness: 1500, mass: 0.1 };
   const cursorX = useSpring(mouseX, springConfig);
   const cursorY = useSpring(mouseY, springConfig);
@@ -69,11 +74,9 @@ export default function Home() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Update MotionValues directly (High Performance, No React Re-render)
       mouseX.set(e.clientX - 16);
       mouseY.set(e.clientY - 16);
     };
-
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('click', handleClick);
     return () => {
@@ -99,14 +102,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden selection:bg-yellow-400 selection:text-black cursor-none font-sans">
       
-      {/* --- CURSOR (Now uses 'style' instead of 'animate' for 0 lag) --- */}
+      {/* --- CURSOR --- */}
       <motion.div 
         className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.6)] mix-blend-difference"
         style={{ x: cursorX, y: cursorY }}
-        animate={{ 
-          scale: isHovering ? 1.5 : 1, 
-          rotate: isHovering ? 90 : 0 
-        }}
+        animate={{ scale: isHovering ? 1.5 : 1, rotate: isHovering ? 90 : 0 }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }} 
       >
         <Hexagon fill={isHovering ? "currentColor" : "none"} strokeWidth={2} size={32} className="opacity-90" />
@@ -122,7 +122,6 @@ export default function Home() {
         ))}
       </AnimatePresence>
 
-      {/* --- BACKGROUND --- */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0" 
            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill-rule='evenodd' stroke='%23ffffff' stroke-width='2' fill='none'/%3E%3C/svg%3E")` }} 
       />
@@ -137,6 +136,16 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
+                
+                {/* --- ADMIN BUTTON (Visible to Authorized IDs) --- */}
+                {ADMIN_IDS.includes((session.user as any)?.id) && (
+                  <Link href="/admin" onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)} 
+                    className="p-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all flex items-center gap-2 group">
+                    <Shield size={18} />
+                    <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:block animate-in fade-in zoom-in duration-200">Admin</span>
+                  </Link>
+                )}
+
                 <span className="font-bold text-xs uppercase tracking-widest hidden md:block text-neutral-500">Welcome, {session.user?.name}</span>
                 <button onClick={() => signOut()} onMouseEnter={playHover} onMouseLeave={() => setIsHovering(false)} className="text-neutral-500 hover:text-white transition p-2 hover:bg-white/5 rounded-full">
                   <LogOut size={20} />
@@ -155,7 +164,6 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-6 py-24 relative z-10">
         <motion.div initial="hidden" animate="show" variants={containerVariants}>
           
-          {/* --- HERO --- */}
           <motion.div variants={itemVariants} className="text-center mb-24 relative">
             <motion.div 
               animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.15, 0.1] }} 
@@ -173,7 +181,6 @@ export default function Home() {
             </p>
           </motion.div>
           
-          {/* --- STATS BAR --- */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-24 max-w-4xl mx-auto">
              <div className="bg-neutral-900/30 border border-white/10 p-6 rounded-2xl flex items-center gap-4 backdrop-blur-sm group hover:border-yellow-400/30 transition-colors">
                <div className="p-3 bg-yellow-400/10 rounded-xl text-yellow-400"><Users size={24} /></div>
@@ -203,7 +210,6 @@ export default function Home() {
              </div>
           </motion.div>
 
-          {/* --- ROLES GRID --- */}
           <motion.div variants={containerVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {roles.map((role) => {
               const isPending = submittedRoles.includes(role.id);
