@@ -88,28 +88,27 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     setIsScanning(true);
     
     try {
-      const response = await fetch('/api/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+      const response = await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           roleId: role.id,
           roleTitle: role.title,
-          username: session?.user?.name || "Anonymous",
-          discord_id: (session?.user as any)?.id || "unknown",
-          answers: formData
+          answers: formData,
         }),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        // Generate a receipt ID if the backend didn't send one
-        setTransactionId(result.application?.id || Math.random().toString(36).substring(7).toUpperCase());
-        setSubmissionStatus("SUCCESS");
-        localStorage.removeItem(`hive_draft_${resolvedParams.id}`);
-        setTimeout(() => router.push("/"), 5000);
-      } else {
-        setSubmissionStatus("ERROR");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || `Submit failed (${response.status})`);
       }
+
+      const result = await response.json();
+      // Generate a receipt ID if the backend didn't send one
+      setTransactionId(result.application?.id || Math.random().toString(36).substring(7).toUpperCase());
+      setSubmissionStatus("SUCCESS");
+      localStorage.removeItem(`hive_draft_${resolvedParams.id}`);
+      setTimeout(() => router.push("/"), 5000);
     } catch (error) {
       setSubmissionStatus("ERROR");
     } finally {
