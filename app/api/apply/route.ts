@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { sql } from "@/lib/db";
 
+export async function GET() {
+  return NextResponse.json({ ok: true, route: "/api/apply" });
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
