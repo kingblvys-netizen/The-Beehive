@@ -12,27 +12,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Safety Identity Check
-    const userId = user.discordId || user.id || user.email || user.name;
+    const userId = user.discordId || user.id;
     const username = user.name || "Anonymous";
 
     const body = await req.json();
-    const roleTitle = body.roleTitle || body.role || "General";
-    const answers = body.answers || {};
+    const { roleTitle, answers } = body;
 
-    // THE DATABASE SAVE COMMAND
-    await sql`
+    // Save to Database
+    const result = await sql`
       INSERT INTO applications (discord_id, username, role_title, answers, status)
-      VALUES (
-        ${String(userId)}, 
-        ${username}, 
-        ${roleTitle}, 
-        ${JSON.stringify(answers)}, 
-        'pending'
-      );
+      VALUES (${String(userId)}, ${username}, ${roleTitle}, ${JSON.stringify(answers)}, 'pending')
+      RETURNING id;
     `;
 
-    return NextResponse.json({ ok: true, message: "Application Saved" }, { status: 201 });
+    return NextResponse.json({ ok: true, application: result.rows[0] }, { status: 201 });
 
   } catch (err: any) {
     console.error("Database Error:", err);
@@ -41,5 +34,5 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ ok: true, message: "API Active" });
+  return NextResponse.json({ ok: true });
 }

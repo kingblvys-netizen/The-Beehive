@@ -1,4 +1,5 @@
-import './globals.css';
+// To this:
+import '../globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Providers } from './providers'; // This points to your app/providers.tsx
