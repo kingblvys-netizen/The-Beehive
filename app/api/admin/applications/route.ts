@@ -2,7 +2,12 @@ import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth/next";
 
-const ADMIN_IDS = ["1208908529411301387", "1406555930769756161", "1241945084346372247"];
+// --- AUTHORIZED ADMIN LIST ---
+const ADMIN_IDS = [
+  "1208908529411301387", // King B
+  "1406555930769756161", // Admin 2
+  "1241945084346372247"  // Admin 3
+];
 
 export async function GET() {
   try {
@@ -13,7 +18,7 @@ export async function GET() {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Fetches columns confirmed in your SQL execution
+    // Fetches the specific columns confirmed in Neon
     const { rows } = await sql`
       SELECT id, discord_id, username, role_title, status, answers, created_at 
       FROM applications 

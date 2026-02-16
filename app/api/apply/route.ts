@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Identity verification failed.' }, { status: 400 });
     }
 
-    // MATCHES NEON SQL TABLE EXACTLY
+    // MATCHES YOUR NEON SQL TABLE EXACTLY
     await sql`
       INSERT INTO applications (discord_id, username, role_title, status, answers)
       VALUES (${discord_id}, ${username}, ${roleTitle}, 'pending', ${JSON.stringify(answers)});
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: 'Success' }, { status: 200 });
   } catch (error) {
     console.error('Database Insertion Error:', error);
+    // This returns the 500 error seen in your console
     return NextResponse.json({ message: 'Database rejection' }, { status: 500 });
   }
 }
