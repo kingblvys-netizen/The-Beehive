@@ -12,12 +12,24 @@ if (!process.env.NEXTAUTH_SECRET) {
 export const authOptions: NextAuthOptions = {
   providers: [
     DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET,
+      clientId: process.env.DISCORD_CLIENT_ID!,
+      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
     }),
   ],
   callbacks: {
-    // ...your callbacks...
+    async jwt({ token, account }) {
+      if (account?.provider === "discord") {
+        token.discordId = account.providerAccountId; // Discord user ID
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.sub ?? "";
+        session.user.discordId = (token.discordId as string) ?? "";
+      }
+      return session;
+    },
   },
   debug: process.env.NEXTAUTH_DEBUG === "true",
   logger: {
