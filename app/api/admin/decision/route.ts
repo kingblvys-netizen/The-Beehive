@@ -1,36 +1,34 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { ADMIN_IDS } from '@/lib/config';
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     const adminUser = session?.user as any;
     const adminId = adminUser?.id || adminUser?.discordId;
 
-    // Security Gate
+    // Security check against your admin list
     if (!session || !ADMIN_IDS.includes(adminId)) {
       return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
     }
 
     const body = await req.json();
-    const applicationId = body.applicationId;
-    const rawStatus = body.status; 
+    const { applicationId, status } = body; 
 
-    if (!applicationId || !rawStatus) {
+    if (!applicationId || !status) {
       return NextResponse.json({ error: 'Missing Data' }, { status: 400 });
     }
 
-    // Logic for Second Chance Reset
-    const isReset = rawStatus === 'reset';
-    const finalStatus = isReset ? 'pending' : rawStatus;
-    
+    // Determine final status and log the admin who did it
+    const isReset = status === 'reset';
+    const finalStatus = isReset ? 'pending' : status;
     const auditNote = isReset 
       ? `RESET by ${adminUser.name} on ${new Date().toLocaleDateString()}`
-      : `${rawStatus.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
+      : `${status.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
 
-    // Database Update
     const result = await sql`
       UPDATE applications 
       SET status = ${finalStatus}, 
@@ -46,7 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, application: result.rows[0] });
 
   } catch (error: any) {
-    console.error("Decision Error:", error);
+    console.error("Decision API Error:", error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
