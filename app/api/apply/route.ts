@@ -6,6 +6,31 @@ import { authOptions } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function sanitizeAnswersPayload(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {} as Record<string, unknown>;
+
+  const source = raw as Record<string, unknown>;
+  const blocked = new Set([
+    "discord_user",
+    "discord_id",
+    "discord_username",
+    "discordid",
+    "username",
+    "user_id",
+    "userid",
+    "email",
+  ]);
+
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!key) continue;
+    const normalized = key.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    if (blocked.has(normalized)) continue;
+    cleaned[key] = value;
+  }
+  return cleaned;
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,6 +43,8 @@ export async function POST(req: Request) {
     if (!roleId || !roleTitle || !answers || typeof answers !== "object") {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
+
+    const safeAnswers = sanitizeAnswersPayload(answers);
 
     const existing = await sql`
       SELECT id, status
@@ -41,7 +68,7 @@ export async function POST(req: Request) {
 
     const result = await sql`
       INSERT INTO applications (discord_id, username, role_id, role_title, answers, status)
-      VALUES (${String(user.id)}, ${String(user.name ?? "Unknown")}, ${String(roleId)}, ${String(roleTitle)}, ${JSON.stringify(answers)}, 'pending')
+      VALUES (${String(user.id)}, ${String(user.name ?? "Unknown")}, ${String(roleId)}, ${String(roleTitle)}, ${JSON.stringify(safeAnswers)}, 'pending')
       RETURNING id
     `;
 

@@ -20,6 +20,65 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Knowledge Base (In-Platform Docs)
+
+The app now includes an internal Knowledge Base so your team can manage docs directly in-platform.
+
+- Staff reader: `/knowledge`
+- Article page: `/knowledge/[slug]`
+- Admin editor: `/admin/knowledge`
+
+### Capabilities
+
+- Create, edit, publish/unpublish, and delete articles
+- Organize with categories (rules, commands, procedures, etc.)
+- Search across article metadata/content
+- Markdown authoring with live preview
+- One-click templates (Rules, Commands, Procedure, Mobile Quick Guide)
+- Auto-save drafts, duplicate article workflow, and copy-link sharing
+- Mobile-friendly editing/reading controls and touch targets
+- Access control:
+	- Authenticated users can read published content
+	- Admin IDs can create/edit/delete content
+
+### Storage
+
+Articles are stored in a `knowledge_articles` PostgreSQL table. The table is auto-created on first Knowledge Base API access.
+
+### Data Minimization
+
+- Applications store only Discord user ID, Discord username, role metadata, and application answers.
+- Identity-like fields in submitted `answers` are stripped server-side to avoid duplicated personal data storage.
+- Knowledge Base content is stored with admin author/update identifiers for auditability.
+
+### Retention Cleanup
+
+- Endpoint: `/api/admin/cleanup-applications` (POST)
+- Deletes old application rows for statuses `declined` and/or `reset`.
+- Default retention window is `APPLICATION_RETENTION_DAYS` from `lib/config.ts`.
+
+Request body (optional):
+
+```json
+{
+	"dryRun": true,
+	"days": 180,
+	"includeDeclined": true,
+	"includeReset": true
+}
+```
+
+Auth options:
+
+- Admin session (dashboard/manual call), or
+- Bearer token via `CLEANUP_CRON_SECRET` env var (for scheduled Vercel Cron).
+
+Suggested Vercel Cron setup:
+
+- Create `CLEANUP_CRON_SECRET` in Vercel env vars.
+- Schedule a cron job (for example weekly).
+- Call `POST /api/admin/cleanup-applications` with `Authorization: Bearer <CLEANUP_CRON_SECRET>`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

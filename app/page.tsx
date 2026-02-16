@@ -1,18 +1,27 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Hexagon, ChevronRight, LogOut, Clock, Users, Zap, 
-  Activity, Shield, Lock, Unlock, Database, Wifi 
+  Activity, Shield, Lock, Database, Wifi, BookOpen 
 } from 'lucide-react';
 import { signIn, useSession, signOut } from "next-auth/react";
 import Link from 'next/link';
 import { roles as staticRoles } from './data'; 
 import { motion, AnimatePresence, useMotionValue, useSpring, type Variants } from 'framer-motion';
+import { ADMIN_IDS } from '@/lib/config';
 
 // --- CONFIGURATION ---
-const ADMIN_IDS = ["1208908529411301387", "1406555930769756161", "1241945084346372247", "845669772926779392", "417331086369226752"];
 const SITE_VERSION = "2.3.0-TACTICAL";
+
+type SessionUser = {
+  id?: string;
+  discordId?: string;
+};
+
+function getAdminIdFromUser(user?: SessionUser) {
+  return String(user?.id || user?.discordId || "");
+}
 
 // --- CUSTOM BRAND ICONS ---
 const DiscordIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
@@ -27,6 +36,7 @@ export default function Home() {
   const [liveRoles, setLiveRoles] = useState(staticRoles);
   const [submittedRoles, setSubmittedRoles] = useState<Record<string, string>>({});
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [enableCursorFx, setEnableCursorFx] = useState(false);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100); 
@@ -34,6 +44,28 @@ export default function Home() {
   const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 }; 
   const cursorX = useSpring(mouseX, springConfig);
   const cursorY = useSpring(mouseY, springConfig);
+  const cursorFrameRef = useRef<number | null>(null);
+  const clickCleanupTimersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const pointerMedia = window.matchMedia("(pointer: fine)");
+    const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const sync = () => {
+      setEnableCursorFx(pointerMedia.matches && !motionMedia.matches);
+    };
+
+    sync();
+    pointerMedia.addEventListener("change", sync);
+    motionMedia.addEventListener("change", sync);
+
+    return () => {
+      pointerMedia.removeEventListener("change", sync);
+      motionMedia.removeEventListener("change", sync);
+    };
+  }, []);
 
   // --- 2. LIVE ROLE & USER SYNC ENGINE ---
   useEffect(() => {
@@ -43,7 +75,7 @@ export default function Home() {
         const payload = await res.json();
 
         const settings: Record<string, boolean> = Array.isArray(payload)
-          ? Object.fromEntries(payload.map((r: any) => [r.role_id, Boolean(r.is_open)]))
+          ? Object.fromEntries(payload.map((r: { role_id: string; is_open: boolean | null }) => [r.role_id, Boolean(r.is_open)]))
           : (payload?.settings || {});
 
         setLiveRoles(
@@ -66,7 +98,7 @@ export default function Home() {
         const res = await fetch("/api/apply", { cache: "no-store" });
         const data = await res.json();
         const map = Object.fromEntries(
-          (data?.appliedRoles || []).map((r: any) => [String(r.role_id), String(r.status)])
+          (Array.isArray(data?.appliedRoles) ? data.appliedRoles : []).map((r: { role_id: string; status: string }) => [String(r.role_id), String(r.status)])
         );
         setSubmittedRoles(map);
       } catch {
@@ -80,22 +112,46 @@ export default function Home() {
 
   // --- 3. INPUT TRACKING ---
   useEffect(() => {
+    if (!enableCursorFx) return;
+
     const handleMouseMove = (e: MouseEvent) => {
-      mouseX.set(e.clientX - 16);
-      mouseY.set(e.clientY - 16);
+      const nextX = e.clientX - 16;
+      const nextY = e.clientY - 16;
+      if (cursorFrameRef.current !== null) {
+        cancelAnimationFrame(cursorFrameRef.current);
+      }
+      cursorFrameRef.current = requestAnimationFrame(() => {
+        mouseX.set(nextX);
+        mouseY.set(nextY);
+        cursorFrameRef.current = null;
+      });
     };
     const handleClick = (e: MouseEvent) => {
       const newClick = { id: Date.now(), x: e.clientX, y: e.clientY };
       setClicks((prev) => [...prev, newClick]);
-      setTimeout(() => setClicks((prev) => prev.filter((c) => c.id !== newClick.id)), 600);
+      const timeoutId = window.setTimeout(() => {
+        setClicks((prev) => prev.filter((c) => c.id !== newClick.id));
+        clickCleanupTimersRef.current = clickCleanupTimersRef.current.filter((t) => t !== timeoutId);
+      }, 600);
+      clickCleanupTimersRef.current.push(timeoutId);
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('click', handleClick);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    window.addEventListener('click', handleClick, { passive: true });
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('click', handleClick);
+      if (cursorFrameRef.current !== null) {
+        cancelAnimationFrame(cursorFrameRef.current);
+      }
+      for (const timer of clickCleanupTimersRef.current) {
+        window.clearTimeout(timer);
+      }
+      clickCleanupTimersRef.current = [];
     };
-  }, [mouseX, mouseY]);
+  }, [enableCursorFx, mouseX, mouseY]);
+
+  const sessionUser = session?.user as SessionUser | undefined;
+  const sessionAdminId = getAdminIdFromUser(sessionUser);
 
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -108,29 +164,33 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white relative overflow-hidden selection:bg-yellow-500 selection:text-black cursor-none font-sans antialiased">
+    <div className={`min-h-screen bg-[#050505] text-white relative overflow-hidden selection:bg-yellow-500 selection:text-black font-sans antialiased ${enableCursorFx ? "cursor-none" : ""}`}>
       
       {/* --- SNAPPY CURSOR --- */}
-      <motion.div 
-        className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-400 mix-blend-difference"
-        style={{ x: cursorX, y: cursorY }}
-        animate={{ scale: isHovering ? 1.4 : 1, rotate: isHovering ? 45 : 0 }}
-      >
-        <Hexagon fill={isHovering ? "currentColor" : "none"} strokeWidth={2} size={32} />
-      </motion.div>
+      {enableCursorFx ? (
+        <motion.div 
+          className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-400 mix-blend-difference"
+          style={{ x: cursorX, y: cursorY }}
+          animate={{ scale: isHovering ? 1.4 : 1, rotate: isHovering ? 45 : 0 }}
+        >
+          <Hexagon fill={isHovering ? "currentColor" : "none"} strokeWidth={2} size={32} />
+        </motion.div>
+      ) : null}
 
       {/* --- CLICK PULSE --- */}
-      <AnimatePresence>
-        {clicks.map((click) => (
-          <motion.div key={click.id} initial={{ opacity: 1, scale: 0 }} animate={{ opacity: 0, scale: 3 }} exit={{ opacity: 0 }}
-            className="fixed pointer-events-none z-[9998] border border-yellow-400/30 rounded-full w-8 h-8" style={{ left: click.x - 16, top: click.y - 16 }} 
-          />
-        ))}
-      </AnimatePresence>
+      {enableCursorFx ? (
+        <AnimatePresence>
+          {clicks.map((click) => (
+            <motion.div key={click.id} initial={{ opacity: 1, scale: 0 }} animate={{ opacity: 0, scale: 3 }} exit={{ opacity: 0 }}
+              className="fixed pointer-events-none z-[9998] border border-yellow-400/30 rounded-full w-8 h-8" style={{ left: click.x - 16, top: click.y - 16 }} 
+            />
+          ))}
+        </AnimatePresence>
+      ) : null}
 
       <motion.div 
-        animate={{ opacity: [0.03, 0.06, 0.03] }}
-        transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+        animate={enableCursorFx ? { opacity: [0.03, 0.06, 0.03] } : undefined}
+        transition={enableCursorFx ? { duration: 5, repeat: Infinity, ease: "easeInOut" } : undefined}
         className="absolute inset-0 pointer-events-none z-0" 
         style={{ backgroundImage: `radial-gradient(#FACC15 1px, transparent 1px)`, backgroundSize: '40px 40px' }} 
       />
@@ -146,7 +206,16 @@ export default function Home() {
           <div className="flex items-center gap-6">
             {status === "authenticated" ? (
               <div className="flex items-center gap-4">
-                {ADMIN_IDS.includes((session.user as any)?.id) && (
+                <Link
+                  href="/knowledge"
+                  onMouseEnter={() => setIsHovering(true)}
+                  onMouseLeave={() => setIsHovering(false)}
+                  className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+                >
+                  <BookOpen size={16} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Knowledge Base</span>
+                </Link>
+                {ADMIN_IDS.includes(sessionAdminId) && (
                   <Link href="/admin" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} 
                     className="flex items-center gap-2 px-5 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-[0_0_15px_#ef444433] group">
                     <Shield size={16} className="group-hover:animate-spin-slow" />

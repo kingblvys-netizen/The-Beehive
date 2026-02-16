@@ -1,29 +1,64 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSession } from "next-auth/react";
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence, useSpring, useMotionValue } from 'framer-motion';
 import { 
-  Hexagon, Shield, Search, XCircle, FileText, User, 
-  Calendar, CheckCircle2, XSquare, Lock, Unlock, RefreshCw, 
-  AlertTriangle, Power, Filter, Activity, Target, PieChart, ExternalLink
+  Hexagon, Shield, Search, XCircle, 
+  CheckCircle2, XSquare, Lock, Unlock, RefreshCw, 
+  AlertTriangle, Power, Activity, Target, PieChart, ExternalLink, BookOpen
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
-import { ADMIN_IDS } from '@/lib/config'; // use shared config
+import { ADMIN_IDS, APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
+
+type SessionUser = {
+  id?: string;
+  discordId?: string;
+  name?: string | null;
+};
+
+type ApplicationRecord = {
+  id: number;
+  discord_id: string;
+  username: string;
+  role_id?: string;
+  role_title: string;
+  status: string;
+  audit_note?: string | null;
+  created_at?: string;
+  answers?: unknown;
+  responses?: unknown;
+  application_answers?: unknown;
+};
+
+type RoleSettingsPayload = {
+  settings?: Record<string, boolean>;
+};
+
+function getAdminIdFromUser(user?: SessionUser) {
+  return String(user?.id || user?.discordId || "");
+}
 
 export default function AdminDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   
   // Data State
-  const [applications, setApplications] = useState<any[]>([]);
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [roleSettings, setRoleSettings] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [selectedApp, setSelectedApp] = useState<any>(null);
+  const [selectedApp, setSelectedApp] = useState<ApplicationRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [cleanupDays, setCleanupDays] = useState<number>(APPLICATION_RETENTION_DAYS);
+  const [cleanupIncludeDeclined, setCleanupIncludeDeclined] = useState(true);
+  const [cleanupIncludeReset, setCleanupIncludeReset] = useState(true);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string>("");
+  const [enableCursorFx, setEnableCursorFx] = useState(false);
 
   // --- 1. SURGICAL PRECISION CURSOR (ZERO LAG) ---
   const mouseX = useMotionValue(-100);
@@ -32,33 +67,72 @@ export default function AdminDashboard() {
   const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 };
   const cursorX = useSpring(mouseX, springConfig);
   const cursorY = useSpring(mouseY, springConfig);
+  const cursorFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const moveCursor = (e: MouseEvent) => {
-      mouseX.set(e.clientX - 16);
-      mouseY.set(e.clientY - 16);
-    };
-    window.addEventListener("mousemove", moveCursor);
-    return () => window.removeEventListener("mousemove", moveCursor);
-  }, [mouseX, mouseY]);
+    if (typeof window === "undefined") return;
 
-  const openApplication = (app: any) => setSelectedApp(app);
+    const pointerMedia = window.matchMedia("(pointer: fine)");
+    const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const sync = () => {
+      setEnableCursorFx(pointerMedia.matches && !motionMedia.matches);
+    };
+
+    sync();
+    pointerMedia.addEventListener("change", sync);
+    motionMedia.addEventListener("change", sync);
+
+    return () => {
+      pointerMedia.removeEventListener("change", sync);
+      motionMedia.removeEventListener("change", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enableCursorFx) return;
+
+    const moveCursor = (e: MouseEvent) => {
+      const nextX = e.clientX - 16;
+      const nextY = e.clientY - 16;
+      if (cursorFrameRef.current !== null) {
+        cancelAnimationFrame(cursorFrameRef.current);
+      }
+      cursorFrameRef.current = requestAnimationFrame(() => {
+        mouseX.set(nextX);
+        mouseY.set(nextY);
+        cursorFrameRef.current = null;
+      });
+    };
+    window.addEventListener("mousemove", moveCursor, { passive: true });
+    return () => {
+      window.removeEventListener("mousemove", moveCursor);
+      if (cursorFrameRef.current !== null) {
+        cancelAnimationFrame(cursorFrameRef.current);
+      }
+    };
+  }, [enableCursorFx, mouseX, mouseY]);
+
+  const openApplication = (app: ApplicationRecord) => setSelectedApp(app);
 
   // --- 2. DATA FETCHING (SATELLITE SYNC) ---
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch Apps
-      const appRes = await fetch('/api/admin/applications', { cache: "no-store" });
-      const apps = await appRes.json();
-      if (Array.isArray(apps)) setApplications(apps);
+      const [appRes, roleRes] = await Promise.all([
+        fetch('/api/admin/applications', { cache: "no-store" }),
+        fetch('/api/admin/toggle-role', { cache: "no-store" }),
+      ]);
 
-      // Fetch Role Locks
-      const roleRes = await fetch('/api/admin/toggle-role', { cache: "no-store" });
-      const rolePayload = await roleRes.json();
+      const apps = await appRes.json().catch(() => []);
+      if (appRes.ok && Array.isArray(apps)) {
+        setApplications(apps as ApplicationRecord[]);
+      }
+
+      const rolePayload = (await roleRes.json().catch(() => ({}))) as RoleSettingsPayload | Array<{ role_id: string; is_open: boolean | null }>;
 
       const settingsMap: Record<string, boolean> = Array.isArray(rolePayload)
-        ? Object.fromEntries(rolePayload.map((r: any) => [r.role_id, Boolean(r.is_open)]))
+        ? Object.fromEntries(rolePayload.map((r) => [r.role_id, Boolean(r.is_open)]))
         : (rolePayload?.settings || {});
 
       setRoleSettings(settingsMap);
@@ -83,8 +157,8 @@ export default function AdminDashboard() {
       applications.reduce((acc, curr) => {
         acc[curr.role_title] = (acc[curr.role_title] || 0) + 1;
         return acc;
-      }, {} as any)
-    ).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || 'N/A' : 'N/A'
+      }, {} as Record<string, number>)
+    ).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A' : 'N/A'
   };
 
   // --- 4. ACTIONS (APPROVE, DECLINE, RESET) ---
@@ -112,7 +186,7 @@ export default function AdminDashboard() {
             : app
         ));
         if (selectedApp?.id === id) {
-          setSelectedApp((prev: any) => prev ? {
+          setSelectedApp((prev) => prev ? {
             ...prev,
             status: data?.application?.status ?? (decision === 'reset' ? 'pending' : decision),
             audit_note: data?.application?.audit_note ?? prev.audit_note
@@ -137,7 +211,7 @@ export default function AdminDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roleId, isOpen: !currentStatus }),
       });
-    } catch (error) {
+    } catch {
       setRoleSettings(prev => ({ ...prev, [roleId]: currentStatus }));
       alert("Failed to update recruitment channel.");
     }
@@ -152,16 +226,59 @@ export default function AdminDashboard() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Delete failed");
       }
-      setApplications((prev) => prev.filter((a: any) => String(a.id) !== String(id)));
-      if (selectedApp?.id === id) setSelectedApp(null);
-    } catch (e: any) {
-      alert(e?.message || "Delete failed");
+      setApplications((prev) => prev.filter((a) => String(a.id) !== String(id)));
+      if (String(selectedApp?.id) === String(id)) setSelectedApp(null);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Delete failed";
+      alert(message);
     } finally {
       setDeletingId(null);
     }
   };
 
+  const runCleanup = async (dryRun: boolean) => {
+    if (!cleanupIncludeDeclined && !cleanupIncludeReset) {
+      alert("Select at least one status to clean up.");
+      return;
+    }
+
+    try {
+      setCleanupLoading(true);
+      setCleanupResult("");
+      const res = await fetch('/api/admin/cleanup-applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dryRun,
+          days: cleanupDays,
+          includeDeclined: cleanupIncludeDeclined,
+          includeReset: cleanupIncludeReset,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || 'Cleanup request failed');
+      }
+
+      if (dryRun) {
+        setCleanupResult(`Dry run complete: ${data?.willDelete ?? 0} records would be removed.`);
+      } else {
+        setCleanupResult(`Cleanup complete: ${data?.deletedCount ?? 0} records removed.`);
+        await fetchData();
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Cleanup request failed';
+      setCleanupResult(`Error: ${message}`);
+    } finally {
+      setCleanupLoading(false);
+    }
+  };
+
   // ACCESS GATE
+  const sessionUser = session?.user as SessionUser | undefined;
+  const sessionAdminId = getAdminIdFromUser(sessionUser);
+
   if (status === "loading" || loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
       <RefreshCw className="text-yellow-500 animate-spin" size={48} />
@@ -169,7 +286,7 @@ export default function AdminDashboard() {
     </div>
   );
 
-  if (!session || !ADMIN_IDS.includes((session.user as any)?.id)) {
+  if (!session || !ADMIN_IDS.includes(sessionAdminId)) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
         <Shield size={64} className="text-red-500 mb-6 animate-pulse" />
@@ -179,19 +296,22 @@ export default function AdminDashboard() {
     );
   }
 
-  const filteredApps = applications.filter(app => 
-    app.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    app.discord_id?.includes(searchTerm) ||
-    app.role_title?.toLowerCase().includes(searchTerm.toLowerCase())
+  const loweredSearch = searchTerm.toLowerCase();
+  const filteredApps = applications.filter((app) => 
+    (app.username || "").toLowerCase().includes(loweredSearch) ||
+    (app.discord_id || "").includes(searchTerm) ||
+    (app.role_title || "").toLowerCase().includes(loweredSearch)
   );
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-mono selection:bg-yellow-500 selection:text-black relative cursor-none antialiased">
+    <div className={`min-h-screen bg-[#050505] text-white font-mono selection:bg-yellow-500 selection:text-black relative antialiased ${enableCursorFx ? "cursor-none" : ""}`}>
       
       {/* CURSOR */}
-      <motion.div className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-500 mix-blend-difference" style={{ x: cursorX, y: cursorY }}>
-        <Hexagon fill="currentColor" size={24} className="opacity-80" />
-      </motion.div>
+      {enableCursorFx ? (
+        <motion.div className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-500 mix-blend-difference" style={{ x: cursorX, y: cursorY }}>
+          <Hexagon fill="currentColor" size={24} className="opacity-80" />
+        </motion.div>
+      ) : null}
 
       {/* NAV */}
       <nav className="border-b border-white/5 bg-black/80 backdrop-blur-xl sticky top-0 z-40">
@@ -201,6 +321,12 @@ export default function AdminDashboard() {
             <h1 className="text-lg font-black tracking-widest uppercase italic">Hive Command Hub</h1>
           </div>
           <div className="flex items-center gap-6">
+            <Link
+              href="/admin/knowledge"
+              className="px-3 py-2 border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-yellow-500/20"
+            >
+              <BookOpen size={12} /> Knowledge Base
+            </Link>
             <button onClick={fetchData} className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors">
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
             </button>
@@ -261,6 +387,70 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* DATA RETENTION CLEANUP */}
+        <div className="mb-12 bg-neutral-900/30 border border-white/5 rounded-2xl p-5 md:p-6 backdrop-blur-md">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4 flex items-center gap-2">
+            <AlertTriangle size={12} /> Data Retention Cleanup
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+            <div className="md:col-span-1">
+              <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Retention Days</label>
+              <input
+                type="number"
+                min={7}
+                max={3650}
+                value={cleanupDays}
+                onChange={(e) => setCleanupDays(Math.max(7, Number(e.target.value || APPLICATION_RETENTION_DAYS)))}
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
+              />
+            </div>
+
+            <div className="md:col-span-2 flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={cleanupIncludeDeclined}
+                  onChange={(e) => setCleanupIncludeDeclined(e.target.checked)}
+                />
+                Include Declined
+              </label>
+              <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={cleanupIncludeReset}
+                  onChange={(e) => setCleanupIncludeReset(e.target.checked)}
+                />
+                Include Reset
+              </label>
+            </div>
+
+            <div className="md:col-span-1 flex items-end justify-start md:justify-end gap-2">
+              <button
+                onClick={() => runCleanup(true)}
+                disabled={cleanupLoading}
+                className="px-3 py-2 border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 rounded-lg text-[10px] uppercase tracking-widest disabled:opacity-50"
+              >
+                Dry Run
+              </button>
+              <button
+                onClick={() => runCleanup(false)}
+                disabled={cleanupLoading}
+                className="px-3 py-2 border border-red-500/40 bg-red-500/10 text-red-300 rounded-lg text-[10px] uppercase tracking-widest disabled:opacity-50"
+              >
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-neutral-500 uppercase tracking-widest">
+            Deletes records older than {cleanupDays} day(s) for selected statuses.
+          </p>
+          {cleanupResult && (
+            <p className="mt-2 text-xs text-neutral-300">{cleanupResult}</p>
+          )}
+        </div>
+
         {/* SEARCH & TABLE */}
         <div className="mb-8 relative max-w-md group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={16} />
@@ -288,7 +478,7 @@ export default function AdminDashboard() {
                 <tr key={app.id} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-6">
                     <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
-                    <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
+                    <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
                       {app.discord_id} <ExternalLink size={10} />
                     </a>
                   </td>
@@ -372,7 +562,7 @@ export default function AdminDashboard() {
                     return (
                       <div key={key} className="bg-white/[0.02] border border-white/5 p-6 rounded-xl">
                         <div className="text-[9px] font-black uppercase text-neutral-500 mb-2 tracking-widest">{questionLabel}</div>
-                        <div className="text-white text-sm leading-relaxed font-medium">"{String(value)}"</div>
+                        <div className="text-white text-sm leading-relaxed font-medium">{String(value)}</div>
                       </div>
                     );
                   });

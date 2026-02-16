@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Activity, Database, Server, Shield, Wifi, ChevronLeft, Cpu } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { Activity, Database, Server, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { SITE_VERSION, CORE_SATELLITE } from '@/lib/config';
 
 export default function StatusPage() {
   const [dbStatus, setDbStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [latency, setLatency] = useState<number | null>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const checkCore = async () => {
@@ -83,7 +84,7 @@ export default function StatusPage() {
             <p className={dbStatus === 'online' ? "text-green-500/70" : "text-red-500"}>
               {dbStatus === 'online' ? "[ OK ] DB_LINK_ESTABLISHED" : "[ ERR ] DB_LINK_CRITICAL"}
             </p>
-            <motion.p animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+            <motion.p animate={prefersReducedMotion ? undefined : { opacity: [1, 0.4, 1] }} transition={prefersReducedMotion ? undefined : { repeat: Infinity, duration: 1.5 }}>
               [ WAIT ] SCANNING NEURAL UPLINKS...
             </motion.p>
           </div>

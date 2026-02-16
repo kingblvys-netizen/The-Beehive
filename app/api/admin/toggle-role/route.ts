@@ -4,20 +4,30 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ADMIN_IDS } from "@/lib/config";
 
+type ToggleRoleBody = {
+  roleId?: string;
+  isOpen?: boolean;
+};
+
+type RoleSettingRow = {
+  role_id: string;
+  is_open: boolean | null;
+};
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as { id?: string; discordId?: string } | undefined;
     const adminId = user?.id || user?.discordId;
 
     if (!session || !ADMIN_IDS.includes(String(adminId))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { roleId, isOpen } = await req.json();
+    const { roleId, isOpen } = (await req.json().catch(() => ({}))) as ToggleRoleBody;
     if (!roleId || typeof isOpen !== "boolean") {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
@@ -38,8 +48,8 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
-    const { rows } = await sql`SELECT role_id, is_open FROM role_settings`;
-    const settings = Object.fromEntries(rows.map((r: any) => [r.role_id, Boolean(r.is_open)]));
+    const { rows } = await sql<RoleSettingRow>`SELECT role_id, is_open FROM role_settings`;
+    const settings = Object.fromEntries(rows.map((r) => [r.role_id, Boolean(r.is_open)]));
     return NextResponse.json({ settings, rows });
   } catch (error) {
     console.error("[toggle-role] GET error:", error);

@@ -4,22 +4,36 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ADMIN_IDS } from '@/lib/config';
 
+type AdminDecisionBody = {
+  applicationId?: number | string;
+  status?: "approved" | "declined" | "reset" | "purge";
+};
+
+function toErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const adminUser = session?.user as any;
-    const adminId = adminUser?.id || adminUser?.discordId;
+    const adminUser = session?.user as { id?: string; discordId?: string; name?: string | null } | undefined;
+    const adminId = String(adminUser?.id || adminUser?.discordId || "");
 
     // --- SECURITY GATE ---
     if (!session || !ADMIN_IDS.includes(adminId)) {
       return NextResponse.json({ error: 'Unauthorized: Admin Clearance Required' }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = (await req.json().catch(() => ({}))) as AdminDecisionBody;
     const { applicationId, status } = body; 
 
     if (!applicationId || !status) {
       return NextResponse.json({ error: 'Missing Protocol Data' }, { status: 400 });
+    }
+
+    const allowedStatuses = new Set(["approved", "declined", "reset", "purge"]);
+    if (!allowedStatuses.has(status)) {
+      return NextResponse.json({ error: 'Invalid decision status' }, { status: 400 });
     }
 
     // --- 1. PURGE PROTOCOL (Allows Re-application) ---
@@ -48,8 +62,8 @@ export async function POST(req: Request) {
     
     // Generate a timestamped audit log for the dashboard
     const auditNote = isReset
-      ? `RESET/UNLOCK by ${adminUser.name} on ${new Date().toLocaleDateString()}`
-      : `${status.toUpperCase()} by ${adminUser.name} on ${new Date().toLocaleDateString()}`;
+      ? `RESET/UNLOCK by ${adminUser?.name || "Admin"} on ${new Date().toLocaleDateString()}`
+      : `${status.toUpperCase()} by ${adminUser?.name || "Admin"} on ${new Date().toLocaleDateString()}`;
 
     const updateResult = await sql`
       UPDATE applications 
@@ -68,8 +82,8 @@ export async function POST(req: Request) {
       application: updateResult.rows[0] 
     });
 
-  } catch (error: any) {
-    console.error("Decision API Critical Failure:", error);
+  } catch (error: unknown) {
+    console.error("Decision API Critical Failure:", toErrorMessage(error));
     return NextResponse.json({ error: 'Internal Core Error' }, { status: 500 });
   }
 }

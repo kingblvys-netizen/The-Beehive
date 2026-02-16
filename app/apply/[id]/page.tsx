@@ -12,6 +12,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+type SessionUser = {
+  id?: string;
+  discordId?: string;
+  name?: string | null;
+};
+
 export default function ApplicationPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params);
   const { data: session, status } = useSession();
@@ -25,12 +31,18 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
   const [transactionId, setTransactionId] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [existingApplication, setExistingApplication] = useState<{ id: number; status: string } | null>(null);
+  const [redirectTimerId, setRedirectTimerId] = useState<number | null>(null);
 
   // --- 2. NEURAL LINK: DRAFT AUTO-SAVE ---
   useEffect(() => {
     const draft = localStorage.getItem(`hive_draft_${resolvedParams.id}`);
     if (draft) {
-      setFormData(JSON.parse(draft));
+      try {
+        const parsed = JSON.parse(draft) as Record<string, string>;
+        setFormData(parsed);
+      } catch {
+        localStorage.removeItem(`hive_draft_${resolvedParams.id}`);
+      }
     }
   }, [resolvedParams.id]);
 
@@ -43,10 +55,11 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
   // Identity Sync
   useEffect(() => {
     if (session?.user) {
+      const user = session.user as SessionUser;
       setFormData(prev => ({ 
         ...prev, 
-        discord_user: session.user?.name ?? "Unknown", 
-        discord_id: (session.user as any)?.id ?? "unknown_id" 
+        discord_user: user?.name ?? "Unknown", 
+        discord_id: user?.id || user?.discordId || "unknown_id" 
       }));
     }
   }, [session]);
@@ -64,10 +77,8 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentStep, formData]);
 
-  if (!role) return notFound();
-
   // --- 4. LOGIC & VALIDATION ---
-  const questions = getQuestions(role.id);
+  const questions = getQuestions(role!.id);
   const totalPages = questions.length;
   const q = questions[currentStep];
   
@@ -91,6 +102,8 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
 
   // --- 5. SUBMISSION ---
   const handleSubmit = async () => {
+    if (!role) return;
+
     setSubmissionStatus("SENDING");
     setIsScanning(true);
     
@@ -114,13 +127,22 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       setTransactionId(String(result.id || result.application?.id || Math.random().toString(36).substring(7).toUpperCase()));
       setSubmissionStatus("SUCCESS");
       localStorage.removeItem(`hive_draft_${resolvedParams.id}`);
-      setTimeout(() => router.push("/"), 5000);
-    } catch (error) {
+      const timerId = window.setTimeout(() => router.push("/"), 5000);
+      setRedirectTimerId(timerId);
+    } catch {
       setSubmissionStatus("ERROR");
     } finally {
       setIsScanning(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimerId !== null) {
+        window.clearTimeout(redirectTimerId);
+      }
+    };
+  }, [redirectTimerId]);
 
   useEffect(() => {
     const checkExisting = async () => {
@@ -137,7 +159,9 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
       }
     };
     checkExisting();
-  }, [status, role?.id]);
+  }, [status, role]);
+
+  if (!role) return notFound();
 
   if (status === "loading") return (
     <div className="min-h-screen bg-black flex items-center justify-center">
@@ -289,7 +313,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
                           <button 
                             key={opt} 
                             onClick={() => setFormData(p => ({ ...p, [q.id]: opt }))} 
-                            className={`p-5 rounded-lg border font-black text-[10px] uppercase tracking-[0.2em] transition-all text-left flex items-center justify-between group $
+                            className={`p-5 rounded-lg border font-black text-[10px] uppercase tracking-[0.2em] transition-all text-left flex items-center justify-between group 
                               ${formData[q.id] === opt 
                               ? 'bg-yellow-400 text-black border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.2)]' 
                               : 'bg-black/40 border-white/5 text-neutral-600 hover:border-white/20'
