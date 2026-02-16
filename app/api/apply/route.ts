@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
 
     // 3. Data Formatting
-    // Check for 'roleTitle' (from frontend) or 'role' (fallback)
+    // We check for 'roleTitle' because that is what your frontend sends
     const rawRole = body?.roleTitle || body?.role;
     const role =
       typeof rawRole === "string" && rawRole.trim().length > 0
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     // 4. Database Insertion (THE FIX)
-    // We strictly use the column names confirmed in your Neon Database
+    // We explicitly use 'discord_id', 'username', and 'role_title' to match your database
     const rows = await sql`
       INSERT INTO applications (discord_id, username, role_title, answers, status)
       VALUES (
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("[/api/apply] Database Error details:", {
       message: err?.message,
-      code: err?.code, // Postgres error code (e.g., 42703 for missing column)
+      code: err?.code, 
       detail: err?.detail,
     });
 
