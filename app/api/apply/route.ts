@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       code: err?.code,
       detail: err?.detail,
     });
+
     return NextResponse.json(
       { error: err?.message ?? "Failed to submit application" },
       { status: 500 }
