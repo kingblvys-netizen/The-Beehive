@@ -6,7 +6,8 @@ import { sql } from "@/lib/db";
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string } | undefined)?.id;
+    const user = session?.user as { id?: string; discordId?: string } | undefined;
+    const userId = user?.id ?? user?.discordId;
 
     if (!session || !userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,8 +29,17 @@ export async function POST(req: Request) {
     return NextResponse.json(result[0], { status: 201 });
   } catch (err: any) {
     console.error("[/api/apply] error:", err);
+
+    // Helpful DB diagnostics
+    if (err?.code === "22P02") {
+      return NextResponse.json(
+        { error: "DB type mismatch (likely user_id column type)" },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to submit application" },
+      { error: err?.message ?? "Failed to submit application" },
       { status: 500 }
     );
   }
