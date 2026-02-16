@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { roles, getQuestions } from '../../data'; // Ensure you have this file
+import { roles, getQuestions } from '../../data'; 
 import { notFound } from 'next/navigation';
 import { useSession, signIn } from "next-auth/react";
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,7 +31,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Auto-fill Discord Identity when session loads
+  // Auto-fill Discord Identity
   useEffect(() => {
     if (session?.user) {
       setFormData(prev => ({ 
@@ -46,13 +46,12 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
 
   // 4. Pagination Logic
   const questions = getQuestions(role.id);
-  const questionsPerPage = 3; // Adjusted for better view
+  const questionsPerPage = 3; 
   const totalPages = Math.ceil(questions.length / questionsPerPage);
   const currentQuestions = questions.slice(currentStep * questionsPerPage, (currentStep * questionsPerPage) + questionsPerPage);
   
-  // Check if current page is valid
+  // Validation: Check if current page is valid
   const isPageComplete = currentQuestions.every(q => {
-    // Optional check: You can make specific fields required here
     return formData[q.id] && formData[q.id].trim() !== "";
   });
   
@@ -68,13 +67,20 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
         body: JSON.stringify({ 
           roleTitle: role.title, 
           username: session?.user?.name || "User", 
-          discord_id: (session?.user as any)?.id, // Explicitly send ID
+          discord_id: (session?.user as any)?.id,
           answers: formData 
         }),
       });
 
       if (response.ok) {
         setIsSubmitted(true);
+        // Save to local storage to show "Pending" on homepage
+        const saved = localStorage.getItem('beehive_submissions');
+        const submissions = saved ? JSON.parse(saved) : [];
+        if (!submissions.includes(role.id)) {
+          submissions.push(role.id);
+          localStorage.setItem('beehive_submissions', JSON.stringify(submissions));
+        }
       } else {
         alert("Transmission failed. Please try again.");
       }
@@ -85,7 +91,6 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  // 6. Loading View
   if (status === "loading") return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <Hexagon className="text-yellow-400 animate-spin drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]" size={48} />
@@ -132,7 +137,6 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
              </div>
           )}
         </div>
-        {/* Progress Bar */}
         {!isSubmitted && (
           <div className="absolute bottom-0 left-0 h-[2px] bg-white/10 w-full">
             <motion.div 
@@ -241,6 +245,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
                             {formData[q.id] && formData[q.id].trim() !== "" && <CheckCircle size={14} className="text-green-500" />}
                           </div>
                           
+                          {/* RENDER LOGIC */}
                           {q.type === 'textarea' ? (
                             <textarea 
                               rows={5} 
@@ -249,6 +254,23 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
                               onChange={(e) => setFormData(p => ({ ...p, [q.id]: e.target.value }))} 
                               className="w-full bg-black/30 border border-white/10 rounded-2xl p-6 focus:border-yellow-400/50 focus:bg-black/60 outline-none transition-all resize-none text-sm text-white placeholder:text-neutral-700" 
                             />
+                          ) : q.type === 'radio' ? (
+                            // --- NEW RADIO BUTTON LOGIC ---
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                              {q.options?.map((option) => (
+                                <button
+                                  key={option}
+                                  onClick={() => setFormData(p => ({ ...p, [q.id]: option }))}
+                                  className={`p-4 rounded-xl border font-bold text-xs uppercase tracking-wider transition-all ${
+                                    formData[q.id] === option 
+                                      ? 'bg-yellow-400 text-black border-yellow-400' 
+                                      : 'bg-black/20 text-neutral-500 border-white/10 hover:border-yellow-400/50 hover:text-white'
+                                  }`}
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
                           ) : (
                             <input 
                               type="text" 
@@ -267,7 +289,7 @@ export default function ApplicationPage({ params }: { params: Promise<{ id: stri
                         <button onClick={() => setCurrentStep(currentStep - 1)} disabled={currentStep === 0} className={`text-[10px] font-black uppercase tracking-widest ${currentStep === 0 ? 'opacity-0' : 'text-neutral-500 hover:text-white'}`}>
                           Previous
                         </button>
-                        <button onClick={() => isPageComplete ? setCurrentStep(currentStep + 1) : alert("Fill required fields.")} className={`px-10 py-4 rounded-xl font-black uppercase text-xs tracking-widest flex items-center gap-4 ${isPageComplete ? 'bg-yellow-400 text-black hover:bg-yellow-300' : 'bg-neutral-800 text-neutral-600'}`}>
+                        <button onClick={() => isPageComplete ? setCurrentStep(currentStep + 1) : alert("Please complete all fields.")} className={`px-10 py-4 rounded-xl font-black uppercase text-xs tracking-widest flex items-center gap-4 ${isPageComplete ? 'bg-yellow-400 text-black hover:bg-yellow-300' : 'bg-neutral-800 text-neutral-600'}`}>
                           Next <ChevronRight size={16} />
                         </button>
                       </div>
