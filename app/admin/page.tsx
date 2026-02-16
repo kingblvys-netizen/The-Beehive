@@ -3,15 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import { useSession } from "next-auth/react";
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useSpring, useMotionValue } from 'framer-motion';
 import { 
   Hexagon, Shield, Search, XCircle, FileText, User, 
-  Calendar, CheckCircle2, XSquare, Lock, Unlock, RefreshCw, AlertTriangle
+  Calendar, CheckCircle2, XSquare, Lock, Unlock, RefreshCw, 
+  AlertTriangle, Power, Filter, Activity, Target, PieChart, ExternalLink
 } from 'lucide-react';
-// Import data to translate Question IDs to Real Text
-import { roles as roleData, getQuestions } from '../data';
+import { roles as staticRoleData, getQuestions } from '../data';
 
-// --- ADMIN ACCESS LIST ---
+// --- ADMIN IDS (Move to lib/config.ts if possible) ---
 const ADMIN_IDS = [
   "1208908529411301387", 
   "1406555930769756161", 
@@ -22,21 +22,46 @@ export default function AdminDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   
+  // Data State
   const [applications, setApplications] = useState<any[]>([]);
+  const [roleSettings, setRoleSettings] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [selectedApp, setSelectedApp] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [processingId, setProcessingId] = useState<number | null>(null);
 
-  // 1. Fetch Data
-  const fetchApps = async () => {
+  // --- CURSOR PHYSICS (Optimized for Zero Lag) ---
+  const mouseX = useMotionValue(-100);
+  const mouseY = useMotionValue(-100);
+  const springConfig = { damping: 40, stiffness: 1000, mass: 0.1 };
+  const cursorX = useSpring(mouseX, springConfig);
+  const cursorY = useSpring(mouseY, springConfig);
+
+  useEffect(() => {
+    const moveCursor = (e: MouseEvent) => {
+      mouseX.set(e.clientX - 16);
+      mouseY.set(e.clientY - 16);
+    };
+    window.addEventListener("mousemove", moveCursor);
+    return () => window.removeEventListener("mousemove", moveCursor);
+  }, [mouseX, mouseY]);
+
+  // --- FETCH DATA ---
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/admin/applications');
-      if (response.ok) {
-        const data = await response.json();
-        setApplications(Array.isArray(data) ? data : []);
+      const appRes = await fetch('/api/admin/applications');
+      const apps = await appRes.json();
+      if (Array.isArray(apps)) setApplications(apps);
+
+      const roleRes = await fetch('/api/admin/toggle-role');
+      const roleData = await roleRes.json();
+      
+      const settingsMap: Record<string, boolean> = {};
+      if (Array.isArray(roleData)) {
+        roleData.forEach((r: any) => settingsMap[r.role_id] = r.is_open);
       }
+      setRoleSettings(settingsMap);
     } catch (err) {
       console.error("Fetch Error:", err);
     } finally {
@@ -45,49 +70,82 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (status === "authenticated") fetchApps();
+    if (status === "authenticated") fetchData();
   }, [status]);
 
-  // 2. Decision Handler
+  // --- TACTICAL INTEL: STATS CALCULATION ---
+  const stats = {
+    pending: applications.filter(a => a.status === 'pending').length,
+    successRate: applications.length > 0 
+      ? Math.round((applications.filter(a => a.status === 'approved').length / applications.length) * 100) 
+      : 0,
+    mostPopular: applications.length > 0 ? Object.entries(
+      applications.reduce((acc, curr) => {
+        acc[curr.role_title] = (acc[curr.role_title] || 0) + 1;
+        return acc;
+      }, {} as any)
+    ).sort((a: any, b: any) => b[1] - a[1])[0][0] : 'N/A'
+  };
+
+  // --- ACTIONS ---
   const handleDecision = async (id: number, decision: 'approved' | 'declined') => {
-    setIsUpdating(true);
+    setProcessingId(id);
+    const auditNote = `${decision.toUpperCase()} by ${session?.user?.name} on ${new Date().toLocaleDateString()}`;
+    
     try {
       const res = await fetch('/api/admin/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicationId: id, status: decision }),
+        body: JSON.stringify({ 
+          applicationId: id, 
+          status: decision,
+          auditNote: auditNote // Passing the admin log to the backend
+        }),
       });
       if (res.ok) {
-        setSelectedApp(null);
-        fetchApps();
+        setApplications(prev => prev.map(app => 
+          app.id === id ? { ...app, status: decision, audit_note: auditNote } : app
+        ));
+        if (selectedApp?.id === id) setSelectedApp(null);
       }
     } catch (error) {
-      alert("Sync Failed");
+      alert("Action Failed");
     } finally {
-      setIsUpdating(false);
+      setProcessingId(null);
     }
   };
 
-  // 3. Security & Loading
+  const toggleRole = async (roleId: string, currentStatus: boolean) => {
+    setRoleSettings(prev => ({ ...prev, [roleId]: !currentStatus }));
+    try {
+      await fetch('/api/admin/toggle-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId, isOpen: !currentStatus }),
+      });
+    } catch (error) {
+      setRoleSettings(prev => ({ ...prev, [roleId]: currentStatus }));
+      alert("Failed to update role status");
+    }
+  };
+
   if (status === "loading" || loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
-      <Hexagon className="text-yellow-500 animate-spin" size={64} />
-      <p className="text-yellow-500 font-mono text-[10px] animate-pulse uppercase tracking-[0.5em]">Establishing Secure Link...</p>
+      <RefreshCw className="text-yellow-500 animate-spin" size={48} />
+      <span className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Syncing Tactical Data...</span>
     </div>
   );
 
   if (!session || !ADMIN_IDS.includes((session.user as any)?.id)) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
-        <Shield size={80} className="text-red-600 mb-6 drop-shadow-[0_0_20px_rgba(220,38,38,0.5)]" />
-        <h1 className="text-4xl font-bold uppercase tracking-tighter mb-2">Access Denied</h1>
-        <p className="text-neutral-500 font-mono text-xs mb-8 uppercase tracking-widest">Biometric Mismatch Detected</p>
-        <button onClick={() => router.push('/')} className="px-10 py-4 border border-white/10 hover:bg-yellow-500 hover:text-black transition-all font-bold uppercase text-[10px] tracking-widest rounded">Return to Hub</button>
+        <Shield size={64} className="text-red-500 mb-6 animate-pulse" />
+        <h1 className="text-3xl font-black uppercase tracking-widest">Access Forbidden</h1>
+        <button onClick={() => router.push('/')} className="mt-8 px-8 py-3 border border-white/10 rounded font-bold uppercase text-[10px]">Exit</button>
       </div>
     );
   }
 
-  // Filter Logic
   const filteredApps = applications.filter(app => 
     app.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     app.discord_id?.includes(searchTerm) ||
@@ -95,196 +153,152 @@ export default function AdminDashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-mono selection:bg-yellow-500 selection:text-black relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#050505] text-white font-mono selection:bg-yellow-500 selection:text-black relative cursor-none">
       
-      {/* Background Pattern */}
-      <div className="fixed inset-0 opacity-10 pointer-events-none" 
-           style={{ backgroundImage: 'radial-gradient(#FACC15 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
-      </div>
+      {/* CURSOR */}
+      <motion.div className="fixed top-0 left-0 pointer-events-none z-[9999] text-yellow-500 mix-blend-difference" style={{ x: cursorX, y: cursorY }}>
+        <Hexagon fill="currentColor" size={24} className="opacity-80" />
+      </motion.div>
 
-      {/* --- NAVBAR --- */}
-      <nav className="border-b border-yellow-900/20 bg-black/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
-          <div className="flex items-center gap-4 cursor-pointer group" onClick={() => router.push('/')}>
-            <Hexagon className="text-yellow-500 fill-yellow-500 group-hover:rotate-90 transition-transform" size={28} />
-            <h1 className="text-xl font-bold tracking-widest uppercase text-yellow-500">Hive Command</h1>
+      {/* NAV */}
+      <nav className="border-b border-white/5 bg-black/80 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/')}>
+            <Hexagon className="text-yellow-500 fill-yellow-500" size={24} />
+            <h1 className="text-lg font-black tracking-widest uppercase">Hive Command</h1>
           </div>
           <div className="flex items-center gap-6">
-            <button onClick={fetchApps} className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors">
+            <button onClick={fetchData} className="p-2 text-neutral-500 hover:text-yellow-500 transition-colors">
               <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
             </button>
-            <div className="flex flex-col items-end">
-              <span className="text-[9px] font-bold text-green-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#22c55e]"/> Link Secure
-              </span>
-              <span className="text-xs text-neutral-500 font-bold uppercase">{session.user?.name}</span>
+            <div className="text-right">
+              <div className="text-[9px] font-black text-green-500 uppercase flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"/> Online
+              </div>
+              <div className="text-xs font-bold text-neutral-400">{session.user?.name}</div>
             </div>
-            <img src={session.user?.image || ""} className="w-10 h-10 rounded border border-yellow-500/30" alt="Admin" />
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
+      <main className="max-w-7xl mx-auto px-6 py-12">
         
-        {/* --- HEADER --- */}
-        <div className="flex flex-col lg:flex-row justify-between items-end mb-12 gap-8">
-          <div>
-            <h2 className="text-yellow-500/50 text-[10px] font-bold uppercase tracking-[0.4em] mb-2">Admin Clearance Level 5</h2>
-            <div className="text-4xl md:text-5xl font-bold text-white tracking-tighter uppercase">Recruitment <span className="text-yellow-500">Logs</span></div>
-          </div>
-          <div className="relative w-full lg:w-96 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-yellow-500 transition-colors" size={16} />
-            <input 
-              type="text" 
-              placeholder="SEARCH DATABASE..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-black/50 border border-white/10 rounded py-4 pl-12 pr-6 text-sm focus:border-yellow-500 outline-none transition-all placeholder:text-neutral-700 text-white font-bold tracking-widest uppercase"
-            />
-          </div>
-        </div>
-
-        {/* --- STATUS GRID --- */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-12">
-          {roleData.map(role => (
-            <div key={role.id} className={`p-4 border transition-all ${role.isOpen ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5 grayscale opacity-50'}`}>
-              <div className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 mb-2 truncate">{role.title}</div>
-              <div className={`text-[10px] font-bold uppercase flex items-center gap-2 ${role.isOpen ? 'text-green-500' : 'text-red-500'}`}>
-                {role.isOpen ? <Unlock size={10} /> : <Lock size={10} />} {role.isOpen ? 'ACTIVE' : 'LOCKED'}
-              </div>
+        {/* --- TACTICAL INTEL HUD --- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4">
+            <Activity className="text-yellow-500" />
+            <div>
+              <div className="text-2xl font-black">{stats.pending}</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Pending Dossiers</div>
             </div>
-          ))}
+          </div>
+          <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4">
+            <PieChart className="text-green-500" />
+            <div>
+              <div className="text-2xl font-black">{stats.successRate}%</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">Approval Success</div>
+            </div>
+          </div>
+          <div className="bg-neutral-900/50 border border-white/5 p-6 rounded-xl flex items-center gap-4">
+            <Target className="text-blue-500" />
+            <div>
+              <div className="text-lg font-black truncate max-w-[150px]">{stats.mostPopular}</div>
+              <div className="text-[10px] text-neutral-500 uppercase tracking-widest">High Interest Role</div>
+            </div>
+          </div>
         </div>
 
-        {/* --- APPLICATIONS TABLE --- */}
-        <div className="bg-neutral-900/30 border border-white/5 backdrop-blur-sm min-h-[400px]">
-          <table className="w-full text-left border-collapse">
+        {/* ROLE CONTROLS */}
+        <div className="mb-12">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-600 mb-6 flex items-center gap-2">
+            <Power size={12} /> Recruitment Channels
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            {staticRoleData.map(role => {
+              const isOpen = roleSettings[role.id] !== false; 
+              return (
+                <button key={role.id} onClick={() => toggleRole(role.id, isOpen)} className={`p-4 border rounded-xl text-left transition-all ${isOpen ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5 grayscale opacity-50'}`}>
+                  <div className="text-[9px] font-black uppercase text-neutral-500 mb-1 truncate">{role.title}</div>
+                  <div className={`text-[10px] font-bold uppercase flex items-center gap-2 ${isOpen ? 'text-green-500' : 'text-red-500'}`}>
+                    {isOpen ? <Unlock size={10} /> : <Lock size={10} />} {isOpen ? 'Open' : 'Locked'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* DATA TABLE */}
+        <div className="bg-neutral-900/30 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-md">
+          <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-white/5 bg-white/[0.02]">
-                <th className="p-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Agent Identity</th>
-                <th className="p-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 hidden md:table-cell">Target Role</th>
-                <th className="p-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 hidden md:table-cell">Status</th>
-                <th className="p-6 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 text-right">Action</th>
+              <tr className="border-b border-white/5 bg-white/[0.02] text-[9px] font-black uppercase text-neutral-500 tracking-widest">
+                <th className="p-6">Identity</th>
+                <th className="p-6">Assignment</th>
+                <th className="p-6">Decision Log</th>
+                <th className="p-6 text-right">Intel</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.02]">
               {filteredApps.map((app) => (
-                <tr key={app.id} className="group hover:bg-yellow-500/5 transition-all">
+                <tr key={app.id} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-neutral-800 border border-white/10 flex items-center justify-center text-yellow-500 font-bold group-hover:border-yellow-500 transition-all">
-                        {app.username?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="font-bold text-white tracking-wide uppercase text-sm">{app.username}</div>
-                        <div className="text-[10px] text-neutral-600 tracking-widest">{app.discord_id}</div>
-                      </div>
-                    </div>
+                    <div className="font-bold text-white text-sm uppercase italic">{app.username}</div>
+                    {/* DISCORD PROFILE LINK */}
+                    <a href={`https://discord.com/users/${app.discord_id}`} target="_blank" className="text-[10px] text-neutral-600 hover:text-blue-400 flex items-center gap-1 mt-1 transition-colors">
+                      {app.discord_id} <ExternalLink size={10} />
+                    </a>
                   </td>
-                  <td className="p-6 hidden md:table-cell">
-                    <span className="bg-white/5 border border-white/10 px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{app.role_title}</span>
+                  <td className="p-6">
+                    <span className="bg-white/5 border border-white/5 px-2 py-1 rounded text-[10px] text-neutral-400 font-bold uppercase">{app.role_title}</span>
                   </td>
-                  <td className="p-6 hidden md:table-cell">
-                    <span className={`text-[10px] font-bold uppercase tracking-widest ${
-                      app.status === 'approved' ? 'text-green-500' : 
-                      app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'
-                    }`}>
-                      {app.status}
-                    </span>
+                  <td className="p-6">
+                    <div className={`text-[10px] font-bold uppercase mb-1 ${app.status === 'approved' ? 'text-green-500' : app.status === 'declined' ? 'text-red-500' : 'text-yellow-500'}`}>{app.status}</div>
+                    <div className="text-[8px] text-neutral-600 italic font-medium">{app.audit_note || 'Awaiting Review'}</div>
                   </td>
                   <td className="p-6 text-right">
-                    <button onClick={() => setSelectedApp(app)} className="px-6 py-2 border border-white/10 hover:border-yellow-500 hover:bg-yellow-500 hover:text-black text-neutral-500 text-[10px] font-bold uppercase tracking-widest transition-all">
-                      Review
-                    </button>
+                    <button onClick={() => setSelectedApp(app)} className="px-4 py-2 border border-white/10 hover:border-yellow-500 text-[10px] font-black uppercase tracking-widest transition-all">Review</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          
-          {filteredApps.length === 0 && (
-            <div className="py-32 flex flex-col items-center justify-center text-neutral-700">
-              <AlertTriangle size={32} className="mb-4 opacity-20" />
-              <div className="uppercase font-bold tracking-[0.5em] text-xs">No Signal Detected</div>
-            </div>
-          )}
         </div>
       </main>
 
-      {/* --- DOSSIER MODAL (Fixed "Black Box" Look) --- */}
+      {/* DOSSIER MODAL */}
       <AnimatePresence>
         {selectedApp && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
-            className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} 
-              className="bg-neutral-900/90 border border-yellow-500/20 p-8 md:p-12 max-w-3xl w-full max-h-[85vh] overflow-y-auto relative shadow-[0_0_50px_rgba(250,204,21,0.1)]"
-              style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
-            >
-              <button onClick={() => setSelectedApp(null)} className="absolute top-6 right-6 text-neutral-600 hover:text-red-500 transition-colors">
-                <XCircle size={24} />
-              </button>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-[#0c0c0c] border border-white/10 p-10 rounded-[2.5rem] max-w-2xl w-full max-h-[85vh] overflow-y-auto relative shadow-2xl">
+              <button onClick={() => setSelectedApp(null)} className="absolute top-8 right-8 text-neutral-600 hover:text-white"><XCircle size={24} /></button>
               
-              {/* Header */}
-              <div className="mb-10 border-b border-white/5 pb-8">
-                <div className="flex items-center gap-2 text-yellow-500 mb-2">
-                  <Shield size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.4em]">Candidate Dossier</span>
-                </div>
-                <h2 className="text-4xl md:text-5xl font-bold text-white uppercase tracking-tighter mb-6">{selectedApp.username}</h2>
-                <div className="flex flex-wrap gap-3">
-                  <div className="px-4 py-2 bg-black border border-white/10 text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-2">
-                    <User size={12} className="text-yellow-500"/> {selectedApp.discord_id}
-                  </div>
-                  <div className="px-4 py-2 bg-black border border-white/10 text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-2">
-                    <FileText size={12} className="text-yellow-500"/> {selectedApp.role_title}
-                  </div>
-                  <div className="px-4 py-2 bg-black border border-white/10 text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-2">
-                    <Calendar size={12} className="text-yellow-500"/> {new Date(selectedApp.created_at).toLocaleDateString()}
-                  </div>
-                </div>
+              <div className="mb-10">
+                <div className="text-yellow-500 text-[9px] font-black uppercase tracking-[0.4em] mb-4 flex items-center gap-2"><Shield size={12} /> Confidential Intelligence</div>
+                <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-4">{selectedApp.username}</h2>
+                <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Applying for: <span className="text-white">{selectedApp.role_title}</span></div>
               </div>
               
-              {/* QUESTIONS & ANSWERS (The Translator Logic) */}
-              <div className="space-y-6 mb-12">
+              <div className="space-y-4 mb-10">
                 {selectedApp.answers && Object.entries(selectedApp.answers).map(([key, value]) => {
-                   // 1. Find the Role Config based on the Application's Title
-                   const roleConfig = roleData.find(r => r.title === selectedApp.role_title);
-                   // 2. Get Questions for that role
+                   const roleConfig = staticRoleData.find(r => r.title === selectedApp.role_title);
                    const allQuestions = roleConfig ? getQuestions(roleConfig.id) : [];
-                   // 3. Find the matching question label
                    const questionLabel = allQuestions.find(q => q.id === key)?.label || key;
-
                    return (
-                    <div key={key} className="bg-black/40 p-6 border-l-2 border-yellow-500/50">
-                      <div className="text-[9px] font-bold uppercase text-neutral-500 mb-2 tracking-widest">
-                        {questionLabel} {/* SHOWS FULL TEXT NOW */}
-                      </div>
-                      <div className="text-white text-sm leading-relaxed font-mono">
-                        "{String(value)}"
-                      </div>
+                    <div key={key} className="bg-white/[0.02] border border-white/5 p-6 rounded-xl">
+                      <div className="text-[9px] font-black uppercase text-neutral-500 mb-2 tracking-widest">{questionLabel}</div>
+                      <div className="text-white text-sm leading-relaxed font-medium">"{String(value)}"</div>
                     </div>
                    );
                 })}
               </div>
               
-              {/* DECISION BUTTONS */}
-              <div className="grid grid-cols-2 gap-4 pt-8 border-t border-white/5">
-                <button 
-                  disabled={isUpdating}
-                  onClick={() => handleDecision(selectedApp.id, 'approved')}
-                  className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all"
-                >
-                  <CheckCircle2 size={16}/> {isUpdating ? 'SYNCING...' : 'APPROVE'}
+              <div className="grid grid-cols-2 gap-4">
+                <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'approved')} className="py-4 bg-green-500/10 text-green-500 border border-green-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-green-500 hover:text-black transition-all">
+                   <CheckCircle2 size={16}/> Approve Entry
                 </button>
-                <button 
-                  disabled={isUpdating}
-                  onClick={() => handleDecision(selectedApp.id, 'declined')}
-                  className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 font-bold uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
-                >
-                  <XSquare size={16}/> {isUpdating ? 'SYNCING...' : 'DECLINE'}
+                <button disabled={processingId === selectedApp.id} onClick={() => handleDecision(selectedApp.id, 'declined')} className="py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all">
+                   <XSquare size={16}/> Decline Entry
                 </button>
               </div>
             </motion.div>
