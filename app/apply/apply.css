@@ -26,3 +26,26 @@
   border-radius: 16px;
   box-shadow: 0 0 40px rgba(255, 196, 0, 0.08);
 }
+
+.bee-bg {
+  min-height: 100vh;
+  color: #f8fafc;
+  background:
+    radial-gradient(900px 500px at 10% -10%, rgba(250, 204, 21, 0.18), transparent 60%),
+    radial-gradient(800px 450px at 95% 0%, rgba(245, 158, 11, 0.12), transparent 55%),
+    linear-gradient(180deg, #0a0a0a 0%, #10131a 45%, #0a0d12 100%);
+}
+
+.bee-card {
+  background: rgba(10, 10, 10, 0.55);
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  box-shadow: 0 0 35px rgba(250, 204, 21, 0.12);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+}
+
+.bee-title {
+  color: #facc15;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

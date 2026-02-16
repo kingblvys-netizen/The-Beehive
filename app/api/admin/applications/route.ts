@@ -1,40 +1,35 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { sql } from "@vercel/postgres";
+import { sql } from "@/lib/db";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-
-  if (!session || !userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const adminId = process.env.ADMIN_DISCORD_ID;
-  if (!adminId || userId !== adminId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const applications = await sql`
-    SELECT * FROM applications
-    ORDER BY created_at DESC;
-  `;
-
-  return NextResponse.json(applications.rows);
+function isAdmin(discordId?: string) {
+  const ids = (process.env.ADMIN_DISCORD_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return !!discordId && ids.includes(discordId);
 }
 
-export async function POST(request: Request) {
-  const payload = await request.json();
+export async function GET() {
+  try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user as { discordId?: string } | undefined;
 
-  const res = await fetch("/api/applications", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+    if (!session || !isAdmin(user?.discordId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Submit failed (${res.status}): ${text}`);
+    const rows = await sql`
+      SELECT id, user_id, discord_username, role, answers, status, created_at
+      FROM applications
+      ORDER BY created_at DESC
+      LIMIT 200;
+    `;
+
+    return NextResponse.json({ ok: true, applications: rows });
+  } catch (err: any) {
+    console.error("[/api/admin/applications] error", err);
+    return NextResponse.json({ error: "Failed to load applications" }, { status: 500 });
   }
 }
