@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Hexagon, ChevronRight, LogOut, Clock, Users, Zap, 
-  Activity, Shield, Lock, Unlock, Database, Wifi 
+  Activity, Shield, Lock, Database, Wifi 
 } from 'lucide-react';
 import { signIn, useSession, signOut } from "next-auth/react";
 import Link from 'next/link';
@@ -12,7 +12,7 @@ import { motion, AnimatePresence, useMotionValue, useSpring, type Variants } fro
 
 // --- CONFIGURATION ---
 const ADMIN_IDS = ["1208908529411301387", "1406555930769756161", "1241945084346372247", "845669772926779392", "417331086369226752"];
-const SITE_VERSION = "2.3.0-TACTICAL";
+const SITE_VERSION = "2.5.0-TACTICAL";
 
 // --- CUSTOM BRAND ICONS ---
 const DiscordIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
@@ -35,11 +35,11 @@ export default function Home() {
   const cursorX = useSpring(mouseX, springConfig);
   const cursorY = useSpring(mouseY, springConfig);
 
-  // --- 2. LIVE ROLE & USER SYNC ENGINE ---
+  // --- 2. COMPLEX SYNC ENGINE (ROLE LOCKS & USER RECORDS) ---
   useEffect(() => {
     const syncSystem = async () => {
       try {
-        // Fetch Role Locks
+        // Fetch Admin Toggle States
         const roleRes = await fetch('/api/admin/toggle-role');
         const dbSettings = await roleRes.json();
         if (Array.isArray(dbSettings)) {
@@ -50,7 +50,7 @@ export default function Home() {
           setLiveRoles(merged);
         }
 
-        // Fetch Current User Application Status (Fixes Reset/Purge Sync)
+        // Fetch User Record Status (Allows re-apply after Purge)
         if (status === "authenticated") {
           const userRes = await fetch('/api/user/applications');
           const userApps = await userRes.json();
@@ -69,7 +69,7 @@ export default function Home() {
     if (status === "unauthenticated") setSubmittedRoles([]);
   }, [status, session]);
 
-  // --- 3. INPUT TRACKING ---
+  // --- 3. INPUT TRACKING (CLICK PULSES) ---
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       mouseX.set(e.clientX - 16);
@@ -88,6 +88,7 @@ export default function Home() {
     };
   }, [mouseX, mouseY]);
 
+  // --- 4. ANIMATION VARIANTS ---
   const containerVariants: Variants = {
     hidden: { opacity: 0 },
     show: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.2 } },
@@ -119,6 +120,7 @@ export default function Home() {
         ))}
       </AnimatePresence>
 
+      {/* --- HUD BACKGROUND GRID --- */}
       <motion.div 
         animate={{ opacity: [0.03, 0.06, 0.03] }}
         transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
@@ -141,11 +143,11 @@ export default function Home() {
                   <Link href="/admin" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} 
                     className="flex items-center gap-2 px-5 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-[0_0_15px_#ef444433] group">
                     <Shield size={16} className="group-hover:animate-spin-slow" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Command Hub</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Command Center</span>
                   </Link>
                 )}
                 <div className="hidden md:flex flex-col items-end border-l border-white/10 pl-4">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Neural Agent</span>
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Neural Link Active</span>
                   <span className="text-xs font-black text-white uppercase italic">{session.user?.name}</span>
                 </div>
                 <button onClick={() => signOut()} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)} className="text-neutral-600 hover:text-white transition p-2">
@@ -155,7 +157,7 @@ export default function Home() {
             ) : (
               <button onClick={() => signIn('discord')} onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}
                 className="bg-yellow-400 text-black px-6 py-2.5 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-yellow-300 transition-all shadow-[0_0_20px_#FACC1566]">
-                Neural Link via Discord
+                Establish Handshake
               </button>
             )}
           </div>
@@ -165,7 +167,7 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-6 py-24 relative z-10">
         <motion.div initial="hidden" animate="show" variants={containerVariants}>
           
-          {/* --- HERO (SCALED DOWN) --- */}
+          {/* --- HERO --- */}
           <motion.div variants={itemVariants} className="text-center mb-24 relative">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-yellow-400/5 blur-[160px] pointer-events-none rounded-full" />
             <div className="inline-flex items-center gap-2 mb-8 px-5 py-2 rounded-full border border-yellow-400/20 bg-yellow-400/5 backdrop-blur-md">
@@ -180,15 +182,15 @@ export default function Home() {
             </p>
           </motion.div>
           
-          {/* --- TACTICAL STATS (SCALED DOWN) --- */}
+          {/* --- STATS HUD --- */}
           <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-24 max-w-5xl mx-auto">
              {[
                { icon: Users, label: "Total Recruits", val: "4k+", color: "text-neutral-500" },
                { icon: Activity, label: "Units Active", val: "400+", color: "text-green-500", pulse: true },
                { icon: Zap, label: "Core Stability", val: "99.9%", color: "text-yellow-500" }
              ].map((stat, i) => (
-               <div key={i} className="bg-neutral-900/40 border border-white/5 p-6 rounded-3xl backdrop-blur-md hover:border-white/10 transition-all group shadow-inner">
-                 <div className={`p-3 bg-black/40 border border-white/5 rounded-2xl mb-4 inline-block ${stat.color} group-hover:shadow-[0_0_15px_currentColor] transition-all`}><stat.icon size={22} /></div>
+               <div key={i} className="bg-neutral-900/40 border border-white/5 p-8 rounded-3xl backdrop-blur-md hover:border-white/10 transition-all group shadow-inner">
+                 <div className={`p-4 bg-black/40 border border-white/5 rounded-2xl mb-6 inline-block ${stat.color} group-hover:shadow-[0_0_15px_currentColor] transition-all`}><stat.icon size={26} /></div>
                  <div>
                     <div className="text-2xl font-black text-white flex items-center gap-3 tracking-tighter">
                        {stat.pulse && (
@@ -199,7 +201,7 @@ export default function Home() {
                        )}
                        {stat.val}
                     </div>
-                    <div className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-600 mt-1 group-hover:text-neutral-400 transition-colors">{stat.label}</div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-600 mt-2 group-hover:text-neutral-400 transition-colors">{stat.label}</div>
                  </div>
                </div>
              ))}
@@ -240,7 +242,7 @@ export default function Home() {
                         </span>
                       ) : isPending ? (
                         <span className="text-[9px] px-3 py-1.5 rounded-full border border-yellow-400/20 text-yellow-400 bg-yellow-400/5 font-black tracking-widest uppercase flex items-center gap-1">
-                          <Clock size={10} /> In Review
+                          <Clock size={10} /> In Sync
                         </span>
                       ) : (
                         <span className={`text-[9px] px-3 py-1.5 rounded-full border font-black tracking-widest uppercase ${
@@ -268,7 +270,7 @@ export default function Home() {
                       </div>
                     ) : !role.isOpen ? (
                       <div className="w-full py-5 bg-white/5 border border-white/5 rounded-2xl text-center text-[10px] font-black uppercase tracking-[0.3em] text-neutral-700 italic">
-                        Node Offline
+                        Terminal Offline
                       </div>
                     ) : (
                       <Link href={`/apply/${role.id}`} className="block w-full">
@@ -294,17 +296,10 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-12">
-            {/* CORE STATUS LINK */}
             <Link href="/status" className="text-[10px] font-black uppercase text-neutral-600 hover:text-green-400 transition-all flex items-center gap-3 group">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse group-hover:shadow-[0_0_10px_#22c55e]" /> 
               System Core Integrity
             </Link>
-            
-            <div className="flex items-center gap-8 border-l border-white/10 pl-12">
-              <a href="https://discord.gg/qR6kFuBhCh" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#5865F2]"><DiscordIcon size={24} /></a>
-              <a href="https://www.twitch.tv/its_pupbee" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#9146FF]"><Zap size={24} /></a>
-              <a href="https://www.tiktok.com/@its_pupbee?lang=en" target="_blank" rel="noopener noreferrer" className="text-neutral-700 transition-all hover:scale-125 hover:text-[#FE2C55]"><Users size={24} /></a>
-            </div>
           </div>
         </div>
       </footer>
