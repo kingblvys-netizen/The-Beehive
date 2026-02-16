@@ -57,6 +57,7 @@ type AccessMePayload = {
 
 type AccessEntry = {
   discord_id: string;
+  display_name?: string | null;
   role: "manager" | "staff";
   source: "bootstrap" | "db";
   added_by?: string | null;
@@ -108,6 +109,7 @@ export default function AdminDashboard() {
   const [canManageAccessControl, setCanManageAccessControl] = useState(false);
   const [accessEntries, setAccessEntries] = useState<AccessEntry[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [newAccessName, setNewAccessName] = useState("");
   const [newAccessDiscordId, setNewAccessDiscordId] = useState("");
   const [newAccessRole, setNewAccessRole] = useState<"manager" | "staff">("staff");
   const [accessSubmitting, setAccessSubmitting] = useState(false);
@@ -248,10 +250,11 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ discordId, role: newAccessRole }),
+        body: JSON.stringify({ discordId, displayName: newAccessName.trim(), role: newAccessRole }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Failed to update access');
+      setNewAccessName('');
       setNewAccessDiscordId('');
       await loadAccessEntries();
       await loadAccessAudit();
@@ -717,7 +720,13 @@ export default function AdminDashboard() {
             Staff can read Staff Knowledge only. Managers/Admin can access the Admin Panel and create/edit knowledge content.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+            <input
+              value={newAccessName}
+              onChange={(e) => setNewAccessName(e.target.value)}
+              placeholder="Discord name (optional)"
+              className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
+            />
             <input
               value={newAccessDiscordId}
               onChange={(e) => setNewAccessDiscordId(e.target.value)}
@@ -745,7 +754,10 @@ export default function AdminDashboard() {
             {accessEntries.map((entry) => (
               <div key={entry.discord_id} className="border border-white/10 rounded-xl p-3 bg-black/30">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs font-bold text-white break-all">{entry.discord_id}</div>
+                  <div>
+                    <div className="text-xs font-black text-yellow-300 uppercase tracking-wider">{entry.display_name || 'Unknown User'}</div>
+                    <div className="text-xs font-bold text-white break-all mt-1">{entry.discord_id}</div>
+                  </div>
                   <span className={`text-[10px] uppercase tracking-widest px-2 py-1 rounded border ${entry.role === 'manager' ? 'border-yellow-500/40 text-yellow-300 bg-yellow-500/10' : 'border-blue-500/30 text-blue-300 bg-blue-500/10'}`}>
                     {entry.role === 'manager' ? 'Managers/Admin' : 'Staff'}
                   </span>

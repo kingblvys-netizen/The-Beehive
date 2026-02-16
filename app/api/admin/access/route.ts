@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 type UpsertBody = {
   discordId?: string;
+  displayName?: string;
   role?: "manager" | "staff";
 };
 
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => ({}))) as UpsertBody;
     const discordId = String(body.discordId || "").trim();
+    const displayName = String(body.displayName || "").trim();
     const role = body.role;
 
     if (!discordId || (role !== "manager" && role !== "staff")) {
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
 
     const entry = await upsertAccessRole({
       discordId,
+      displayName,
       role,
       actorId: access.discordId,
     });
@@ -77,7 +80,7 @@ export async function POST(req: Request) {
       area: "access-control",
       action: "upsert-role",
       target: discordId,
-      metadata: { role },
+      metadata: { role, displayName: displayName || null },
     });
 
     return NextResponse.json({ ok: true, entry });

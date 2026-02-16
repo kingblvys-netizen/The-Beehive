@@ -18,6 +18,7 @@ export type AccessInfo = {
 
 type AccessRow = {
   discord_id: string;
+  display_name: string | null;
   role: AccessRole;
   added_by: string | null;
   updated_by: string | null;
@@ -38,6 +39,7 @@ export async function ensureAccessControlTable() {
   await sql`
     CREATE TABLE IF NOT EXISTS access_control (
       discord_id TEXT PRIMARY KEY,
+      display_name TEXT,
       role TEXT NOT NULL CHECK (role IN ('manager', 'staff')),
       added_by TEXT,
       updated_by TEXT,
@@ -49,6 +51,11 @@ export async function ensureAccessControlTable() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_access_control_role
       ON access_control(role);
+  `;
+
+  await sql`
+    ALTER TABLE access_control
+    ADD COLUMN IF NOT EXISTS display_name TEXT;
   `;
 }
 
@@ -131,22 +138,24 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
   };
 }
 
-export async function upsertAccessRole(input: { discordId: string; role: AccessRole; actorId?: string }) {
+export async function upsertAccessRole(input: { discordId: string; displayName?: string; role: AccessRole; actorId?: string }) {
   const discordId = normalizeDiscordId(input.discordId);
   if (!discordId) throw new Error("discordId is required");
 
   await ensureAccessControlTable();
 
   const actor = normalizeDiscordId(input.actorId || "");
+  const displayName = String(input.displayName || "").trim();
   const result = await sql<AccessRow>`
-    INSERT INTO access_control (discord_id, role, added_by, updated_by)
-    VALUES (${discordId}, ${input.role}, ${actor || null}, ${actor || null})
+    INSERT INTO access_control (discord_id, display_name, role, added_by, updated_by)
+    VALUES (${discordId}, ${displayName || null}, ${input.role}, ${actor || null}, ${actor || null})
     ON CONFLICT (discord_id)
     DO UPDATE SET
+      display_name = EXCLUDED.display_name,
       role = EXCLUDED.role,
       updated_by = EXCLUDED.updated_by,
       updated_at = NOW()
-    RETURNING discord_id, role, added_by, updated_by, created_at, updated_at
+    RETURNING discord_id, display_name, role, added_by, updated_by, created_at, updated_at
   `;
 
   return result.rows[0];
@@ -170,16 +179,17 @@ export async function removeAccessRole(discordId: string) {
 export async function listAccessControlEntries() {
   await ensureAccessControlTable();
   const result = await sql<AccessRow>`
-    SELECT discord_id, role, added_by, updated_by, created_at, updated_at
+    SELECT discord_id, display_name, role, added_by, updated_by, created_at, updated_at
     FROM access_control
     ORDER BY updated_at DESC
   `;
 
-  const merged = new Map<string, { discord_id: string; role: AccessRole; source: "bootstrap" | "db"; added_by: string | null; updated_by: string | null; created_at: string | null; updated_at: string | null }>();
+  const merged = new Map<string, { discord_id: string; display_name: string | null; role: AccessRole; source: "bootstrap" | "db"; added_by: string | null; updated_by: string | null; created_at: string | null; updated_at: string | null }>();
 
   for (const id of ADMIN_IDS) {
     merged.set(id, {
       discord_id: id,
+      display_name: null,
       role: "manager",
       source: "bootstrap",
       added_by: null,
@@ -193,6 +203,7 @@ export async function listAccessControlEntries() {
     if (!merged.has(row.discord_id) || row.role === "manager") {
       merged.set(row.discord_id, {
         discord_id: row.discord_id,
+        display_name: row.display_name,
         role: row.role,
         source: "db",
         added_by: row.added_by,

@@ -206,18 +206,34 @@ export default function Home() {
 
       {/* --- NAVIGATION --- */}
       <nav className="border-b border-white/5 bg-black/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center gap-4">
           <Link href="/" className="flex items-center gap-3 group" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}>
             <Hexagon className="text-yellow-400 fill-yellow-400 group-hover:rotate-180 transition-transform duration-1000 shadow-[0_0_20px_#FACC1544]" size={28} />
             <span className="font-black text-xl tracking-tighter uppercase text-white italic">The Beehive</span>
           </Link>
+
+          <div className="hidden md:flex flex-1 justify-center">
+            <div className="flex items-center gap-2 px-2 py-2 rounded-xl border border-white/10 bg-black/40">
+              <Link
+                href="/knowledge"
+                onMouseEnter={() => setIsHovering(true)}
+                onMouseLeave={() => setIsHovering(false)}
+                className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+              >
+                <BookOpen size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Announcements</span>
+              </Link>
+              <span className="px-4 py-2 border border-white/10 text-neutral-500 rounded-lg text-[10px] font-black uppercase tracking-widest">Merch</span>
+              <span className="px-4 py-2 border border-white/10 text-neutral-500 rounded-lg text-[10px] font-black uppercase tracking-widest">Events</span>
+            </div>
+          </div>
           
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 ml-auto">
             <Link
               href="/knowledge"
               onMouseEnter={() => setIsHovering(true)}
               onMouseLeave={() => setIsHovering(false)}
-              className="flex items-center gap-2 px-5 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
+              className="md:hidden flex items-center gap-2 px-4 py-2 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded-lg hover:bg-yellow-500/20 transition-all"
             >
               <BookOpen size={16} />
               <span className="text-[10px] font-black uppercase tracking-widest">Announcements</span>
