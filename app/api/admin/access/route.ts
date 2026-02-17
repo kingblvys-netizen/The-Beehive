@@ -9,7 +9,7 @@ import {
   upsertAccessRole,
 } from "@/lib/access";
 import { logAdminActivity } from "@/lib/audit";
-import { ADMIN_IDS } from "@/lib/config";
+import { ADMIN_IDS, SYN_DISCORD_ID } from "@/lib/config";
 
 const bootstrapAdminIds = new Set<string>(ADMIN_IDS);
 
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 type UpsertBody = {
   discordId?: string;
   displayName?: string;
-  role?: "manager" | "staff";
+  role?: "senior_admin" | "manager" | "staff";
 };
 
 type DeleteBody = {
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
     const displayName = String(body.displayName || "").trim();
     const role = body.role;
 
-    if (!discordId || (role !== "manager" && role !== "staff")) {
+    if (!discordId || (role !== "senior_admin" && role !== "manager" && role !== "staff")) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
@@ -143,16 +143,21 @@ export async function POST(req: Request) {
 
     const actorLevel = getAccessLevel(access.role);
     const isSeniorAdmin = access.role === "senior_admin";
+    const isSynOwner = access.discordId === SYN_DISCORD_ID;
 
     const currentEntries = await listAccessControlEntries();
     const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
     const targetLevel = getAccessLevel(target?.role || null);
 
-    if (target?.role === "senior_admin") {
+    if (target?.role === "senior_admin" && !isSynOwner) {
       return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
     }
 
-    if (!isSeniorAdmin) {
+    if (role === "senior_admin" && !isSynOwner) {
+      return NextResponse.json({ error: "Only Syn can assign Senior Admin role" }, { status: 403 });
+    }
+
+    if (!isSeniorAdmin && !isSynOwner) {
       if (targetLevel >= actorLevel && targetLevel > 0) {
         return NextResponse.json({ error: "Managers can only modify users below them" }, { status: 403 });
       }
@@ -208,16 +213,17 @@ export async function DELETE(req: Request) {
 
     const actorLevel = getAccessLevel(access.role);
     const isSeniorAdmin = access.role === "senior_admin";
+    const isSynOwner = access.discordId === SYN_DISCORD_ID;
 
     const currentEntries = await listAccessControlEntries();
     const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
     const targetLevel = getAccessLevel(target?.role || null);
 
-    if (target?.role === "senior_admin") {
+    if (target?.role === "senior_admin" && !isSynOwner) {
       return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
     }
 
-    if (!isSeniorAdmin && targetLevel >= actorLevel && targetLevel > 0) {
+    if (!isSeniorAdmin && !isSynOwner && targetLevel >= actorLevel && targetLevel > 0) {
       return NextResponse.json({ error: "Managers can only remove users below them" }, { status: 403 });
     }
 

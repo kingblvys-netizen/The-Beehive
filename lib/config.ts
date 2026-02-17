@@ -1,5 +1,7 @@
+export const SYN_DISCORD_ID = "1208908529411301387" as const;
+
 export const SENIOR_ADMIN_IDS = [
-  "1208908529411301387", // Syn
+  SYN_DISCORD_ID, // Syn
   "1241945084346372247", // Zach
 ] as const;
 

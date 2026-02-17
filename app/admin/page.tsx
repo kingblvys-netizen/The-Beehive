@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
 import { APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
+import { SYN_DISCORD_ID } from '@/lib/config';
 
 type ApplicationRecord = {
   id: number;
@@ -109,11 +110,12 @@ export default function AdminDashboard() {
   const [canViewLogs, setCanViewLogs] = useState(false);
   const [canManageAccessControl, setCanManageAccessControl] = useState(false);
   const [currentAccessRole, setCurrentAccessRole] = useState<"senior_admin" | "manager" | "staff" | null>(null);
+  const [currentDiscordId, setCurrentDiscordId] = useState("");
   const [accessEntries, setAccessEntries] = useState<AccessEntry[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessName, setNewAccessName] = useState("");
   const [newAccessDiscordId, setNewAccessDiscordId] = useState("");
-  const [newAccessRole, setNewAccessRole] = useState<"manager" | "staff">("staff");
+  const [newAccessRole, setNewAccessRole] = useState<"senior_admin" | "manager" | "staff">("staff");
   const [accessSubmitting, setAccessSubmitting] = useState(false);
   const [accessBackfilling, setAccessBackfilling] = useState(false);
   const [editingAccessDiscordId, setEditingAccessDiscordId] = useState<string | null>(null);
@@ -203,6 +205,7 @@ export default function AdminDashboard() {
     try {
       const res = await fetch('/api/admin/access/me', { cache: 'no-store' });
       const data = (await res.json().catch(() => ({}))) as AccessMePayload;
+      setCurrentDiscordId(String(data?.discordId || ""));
       setCurrentAccessRole(data?.role || null);
       setCanOpenAdminPanel(Boolean(data?.canOpenAdminPanel));
       setCanAccessAdmin(Boolean(data?.canAccessAdmin));
@@ -210,6 +213,7 @@ export default function AdminDashboard() {
       setCanViewLogs(Boolean(data?.canViewLogs));
       setCanManageAccessControl(Boolean(data?.canManageAccessControl));
     } catch {
+      setCurrentDiscordId("");
       setCurrentAccessRole(null);
       setCanOpenAdminPanel(false);
       setCanAccessAdmin(false);
@@ -308,6 +312,23 @@ export default function AdminDashboard() {
     }
   };
 
+  const changeAccessRoleAny = async (discordId: string, role: "senior_admin" | "manager" | "staff") => {
+    try {
+      const res = await fetch('/api/admin/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordId, role }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to update role');
+      await loadAccessEntries();
+      await loadAccessAudit();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to update role';
+      alert(message);
+    }
+  };
+
   const startEditAccessName = (entry: AccessEntry) => {
     setEditingAccessDiscordId(entry.discord_id);
     setEditingAccessName(String(entry.display_name || ""));
@@ -319,7 +340,8 @@ export default function AdminDashboard() {
   };
 
   const saveAccessName = async (entry: AccessEntry) => {
-    if (entry.role === "senior_admin") {
+    const isSynOwner = currentDiscordId === SYN_DISCORD_ID;
+    if (entry.role === "senior_admin" && !isSynOwner) {
       alert("Senior Admin entries are protected.");
       return;
     }
@@ -332,7 +354,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           discordId: entry.discord_id,
           displayName: nextName,
-          role: entry.role === "manager" ? "manager" : "staff",
+          role: entry.role,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -347,9 +369,10 @@ export default function AdminDashboard() {
   };
 
   const backfillKnownAccessNames = async () => {
+    const isSynOwner = currentDiscordId === SYN_DISCORD_ID;
     const candidates = accessEntries.filter(
       (entry) =>
-        (entry.role === "manager" || entry.role === "staff") &&
+        (isSynOwner || entry.role === "manager" || entry.role === "staff") &&
         String(entry.display_name || '').trim()
     );
     if (candidates.length === 0) {
@@ -382,6 +405,8 @@ export default function AdminDashboard() {
 
   // --- 2. DATA FETCHING (SATELLITE SYNC) ---
   const canModifyAccessEntry = (entry: AccessEntry) => {
+    const isSynOwner = currentDiscordId === SYN_DISCORD_ID;
+    if (isSynOwner) return entry.discord_id !== SYN_DISCORD_ID;
     if (currentAccessRole === "senior_admin") return entry.role !== "senior_admin";
     if (currentAccessRole === "manager") return entry.role === "staff";
     return false;
@@ -442,6 +467,7 @@ export default function AdminDashboard() {
       resolveAccess();
     }
     if (status === "unauthenticated") {
+      setCurrentDiscordId("");
       setCurrentAccessRole(null);
       setCanOpenAdminPanel(false);
       setCanAccessAdmin(false);
@@ -830,11 +856,12 @@ export default function AdminDashboard() {
             />
             <select
               value={newAccessRole}
-              onChange={(e) => setNewAccessRole(e.target.value as "manager" | "staff")}
+              onChange={(e) => setNewAccessRole(e.target.value as "senior_admin" | "manager" | "staff")}
               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
             >
               <option value="staff">Staff (Knowledge Read)</option>
               <option value="manager">Managers/Admin (Admin + Knowledge Edit)</option>
+              {currentDiscordId === SYN_DISCORD_ID ? <option value="senior_admin">Senior Admin (Top Access)</option> : null}
             </select>
             <button
               onClick={upsertAccessEntry}
@@ -914,6 +941,22 @@ export default function AdminDashboard() {
                           className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-blue-500/40 bg-blue-500/10 text-blue-300"
                         >
                           Set Staff
+                        </button>
+                      ) : null}
+                      {currentDiscordId === SYN_DISCORD_ID && (entry.role === 'manager' || entry.role === 'staff') ? (
+                        <button
+                          onClick={() => changeAccessRoleAny(entry.discord_id, 'senior_admin')}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-purple-500/40 bg-purple-500/10 text-purple-300"
+                        >
+                          Set Senior
+                        </button>
+                      ) : null}
+                      {currentDiscordId === SYN_DISCORD_ID && entry.role === 'senior_admin' ? (
+                        <button
+                          onClick={() => changeAccessRoleAny(entry.discord_id, 'manager')}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-blue-500/40 bg-blue-500/10 text-blue-300"
+                        >
+                          Demote Senior
                         </button>
                       ) : null}
                       <button
