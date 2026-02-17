@@ -119,6 +119,10 @@ export async function getAccessRoleByDiscordId(discordId: string): Promise<Acces
   const normalized = normalizeDiscordId(discordId);
   if (!normalized) return null;
 
+  if (SENIOR_ADMIN_IDS.includes(normalized)) {
+    return "senior_admin";
+  }
+
   const dbRole = await getDbAccessRole(normalized);
   if (dbRole) return dbRole;
 
@@ -138,6 +142,20 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
       canManageKnowledge: false,
       canViewLogs: false,
       canManageAccessControl: false,
+    };
+  }
+
+  if (SENIOR_ADMIN_IDS.includes(discordId)) {
+    return {
+      discordId,
+      role: "senior_admin",
+      source: "bootstrap",
+      canOpenAdminPanel: true,
+      canAccessAdmin: true,
+      canAccessKnowledge: true,
+      canManageKnowledge: true,
+      canViewLogs: true,
+      canManageAccessControl: true,
     };
   }
 

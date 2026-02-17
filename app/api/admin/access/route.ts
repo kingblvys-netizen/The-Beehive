@@ -139,6 +139,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Discord ID format" }, { status: 400 });
     }
 
+    if (SENIOR_ADMIN_IDS.includes(discordId) && role !== "senior_admin") {
+      return NextResponse.json({ error: "Bootstrap Senior Admin cannot be downgraded" }, { status: 400 });
+    }
+
     const actorRole = access.role;
     const targetCurrentRole = await getAccessRoleByDiscordId(discordId);
 
