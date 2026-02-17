@@ -850,11 +850,16 @@ export default function AdminDashboard() {
                 {(() => {
                   const isSyn = currentDiscordId === SYN_DISCORD_ID;
                   const managerCanManageEntry = currentAccessRole === "manager" && roleRank(entry.role) < roleRank("manager");
-                  const seniorCanManageEntry = currentAccessRole === "senior_admin";
+                  const seniorCanManageEntry =
+                    currentAccessRole === "senior_admin" &&
+                    (entry.role !== "senior_admin" || isSyn);
                   const canManageEntry = entry.source !== "bootstrap" && (managerCanManageEntry || seniorCanManageEntry);
                   const canEditName = canManageEntry;
                   const canSetSenior = isSyn && entry.role !== "senior_admin";
-                  const canSetManager = currentAccessRole === "senior_admin" && entry.role === "staff";
+                  const canSetManager =
+                    currentAccessRole === "senior_admin" &&
+                    entry.role !== "manager" &&
+                    (entry.role !== "senior_admin" || isSyn);
                   const canSetStaff =
                     currentAccessRole === "senior_admin" && entry.role !== "staff" && (entry.role !== "senior_admin" || isSyn);
                   const canRemove = canManageEntry && (entry.role !== "senior_admin" || isSyn);
@@ -917,7 +922,7 @@ export default function AdminDashboard() {
                           onClick={() => changeAccessRole(entry.discord_id, 'manager')}
                           className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-yellow-500/40 bg-yellow-500/10 text-yellow-300"
                         >
-                          Promote
+                          Set Manager
                         </button>
                       ) : null}
 
