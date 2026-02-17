@@ -27,6 +27,27 @@ function isLikelyDiscordSnowflake(input: string) {
   return /^\d{15,22}$/.test(input);
 }
 
+async function resolveDiscordDisplayName(discordId: string) {
+  const token = String(process.env.DISCORD_BOT_TOKEN || "").trim();
+  if (!token || !isLikelyDiscordSnowflake(discordId)) return null;
+
+  try {
+    const res = await fetch(`https://discord.com/api/v10/users/${discordId}`, {
+      headers: {
+        Authorization: `Bot ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => ({}))) as { global_name?: string | null; username?: string | null };
+    const name = String(data?.global_name || data?.username || "").trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -37,7 +58,34 @@ export async function GET() {
     }
 
     const entries = await listAccessControlEntries();
-    return NextResponse.json({ entries });
+
+    const unresolvedIds = Array.from(
+      new Set(
+        entries
+          .filter((entry) => !String(entry.display_name || "").trim())
+          .map((entry) => String(entry.discord_id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const resolvedPairs = await Promise.all(
+      unresolvedIds.map(async (discordId) => {
+        const displayName = await resolveDiscordDisplayName(discordId);
+        return [discordId, displayName] as const;
+      })
+    );
+
+    const resolvedMap = new Map<string, string>();
+    for (const [discordId, displayName] of resolvedPairs) {
+      if (displayName) resolvedMap.set(discordId, displayName);
+    }
+
+    const hydrated = entries.map((entry) => ({
+      ...entry,
+      display_name: String(entry.display_name || "").trim() || resolvedMap.get(entry.discord_id) || null,
+    }));
+
+    return NextResponse.json({ entries: hydrated });
   } catch (error) {
     console.error("[admin/access] GET error:", error);
     return NextResponse.json({ error: "Failed to load access list" }, { status: 500 });
