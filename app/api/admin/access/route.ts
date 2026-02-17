@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import {
+  getAccessLevel,
   getSessionAccessInfo,
   listAccessControlEntries,
   removeAccessRole,
@@ -138,6 +139,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Discord ID format" }, { status: 400 });
     }
 
+    const actorLevel = getAccessLevel(access.role);
+    const isSeniorAdmin = access.role === "senior_admin";
+
+    const currentEntries = await listAccessControlEntries();
+    const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
+    const targetLevel = getAccessLevel(target?.role || null);
+
+    if (target?.role === "senior_admin") {
+      return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
+    }
+
+    if (!isSeniorAdmin) {
+      if (targetLevel >= actorLevel && targetLevel > 0) {
+        return NextResponse.json({ error: "Managers can only modify users below them" }, { status: 403 });
+      }
+
+      if (role === "manager") {
+        return NextResponse.json({ error: "Only Senior Admin can assign manager role" }, { status: 403 });
+      }
+    }
+
     const entry = await upsertAccessRole({
       discordId,
       displayName,
@@ -180,6 +202,21 @@ export async function DELETE(req: Request) {
 
     if (ADMIN_IDS.includes(discordId)) {
       return NextResponse.json({ error: "Cannot remove bootstrap manager" }, { status: 400 });
+    }
+
+    const actorLevel = getAccessLevel(access.role);
+    const isSeniorAdmin = access.role === "senior_admin";
+
+    const currentEntries = await listAccessControlEntries();
+    const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
+    const targetLevel = getAccessLevel(target?.role || null);
+
+    if (target?.role === "senior_admin") {
+      return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
+    }
+
+    if (!isSeniorAdmin && targetLevel >= actorLevel && targetLevel > 0) {
+      return NextResponse.json({ error: "Managers can only remove users below them" }, { status: 403 });
     }
 
     const removed = await removeAccessRole(discordId);

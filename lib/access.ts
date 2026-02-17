@@ -1,12 +1,14 @@
 import { sql } from "@vercel/postgres";
 import type { Session } from "next-auth";
-import { ADMIN_IDS } from "@/lib/config";
+import { ADMIN_IDS, HONORARY_MANAGER, MANAGER_IDS, SENIOR_ADMIN_IDS } from "@/lib/config";
 
-export type AccessRole = "manager" | "staff";
+export type AccessRole = "senior_admin" | "manager" | "staff";
+export type WritableAccessRole = "manager" | "staff";
 
 export type AccessInfo = {
   discordId: string;
   role: AccessRole | null;
+  roleLabel: string | null;
   source: "bootstrap" | "db" | "none";
   canOpenAdminPanel: boolean;
   canAccessAdmin: boolean;
@@ -19,7 +21,7 @@ export type AccessInfo = {
 type AccessRow = {
   discord_id: string;
   display_name: string | null;
-  role: AccessRole;
+  role: WritableAccessRole;
   added_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -38,6 +40,39 @@ type AuditNameRow = {
 
 function normalizeDiscordId(input: unknown) {
   return String(input || "").trim();
+}
+
+const seniorAdminIds = new Set<string>(Array.from(SENIOR_ADMIN_IDS));
+const managerIds = new Set<string>(Array.from(MANAGER_IDS));
+
+function getBootstrapRoleInfo(discordId: string): { role: AccessRole; roleLabel: string } | null {
+  if (seniorAdminIds.has(discordId)) {
+    return { role: "senior_admin", roleLabel: "Senior Admin" };
+  }
+
+  if (discordId === HONORARY_MANAGER.id) {
+    return { role: "manager", roleLabel: HONORARY_MANAGER.title };
+  }
+
+  if (managerIds.has(discordId)) {
+    return { role: "manager", roleLabel: "Manager" };
+  }
+
+  return null;
+}
+
+export function getAccessLevel(role: AccessRole | null) {
+  if (role === "senior_admin") return 3;
+  if (role === "manager") return 2;
+  if (role === "staff") return 1;
+  return 0;
+}
+
+function defaultRoleLabel(role: AccessRole | null) {
+  if (role === "senior_admin") return "Senior Admin";
+  if (role === "manager") return "Manager";
+  if (role === "staff") return "Staff";
+  return "Unknown";
 }
 
 export function getSessionDiscordId(session: Session | null) {
@@ -73,8 +108,9 @@ export async function getAccessRoleByDiscordId(discordId: string): Promise<Acces
   const normalized = normalizeDiscordId(discordId);
   if (!normalized) return null;
 
-  if (ADMIN_IDS.includes(normalized)) {
-    return "manager";
+  const bootstrap = getBootstrapRoleInfo(normalized);
+  if (bootstrap) {
+    return bootstrap.role;
   }
 
   await ensureAccessControlTable();
@@ -86,7 +122,7 @@ export async function getAccessRoleByDiscordId(discordId: string): Promise<Acces
     LIMIT 1
   `;
 
-  const role = String(result.rows[0]?.role || "") as AccessRole | "";
+  const role = String(result.rows[0]?.role || "") as WritableAccessRole | "";
   return role === "manager" || role === "staff" ? role : null;
 }
 
@@ -96,6 +132,7 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
     return {
       discordId: "",
       role: null,
+      roleLabel: null,
       source: "none",
       canOpenAdminPanel: false,
       canAccessAdmin: false,
@@ -106,10 +143,12 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
     };
   }
 
-  if (ADMIN_IDS.includes(discordId)) {
+  const bootstrap = getBootstrapRoleInfo(discordId);
+  if (bootstrap) {
     return {
       discordId,
-      role: "manager",
+      role: bootstrap.role,
+      roleLabel: bootstrap.roleLabel,
       source: "bootstrap",
       canOpenAdminPanel: true,
       canAccessAdmin: true,
@@ -125,6 +164,7 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
     return {
       discordId,
       role: null,
+      roleLabel: null,
       source: "none",
       canOpenAdminPanel: false,
       canAccessAdmin: false,
@@ -138,17 +178,18 @@ export async function getSessionAccessInfo(session: Session | null): Promise<Acc
   return {
     discordId,
     role,
+    roleLabel: defaultRoleLabel(role),
     source: "db",
-    canOpenAdminPanel: role === "manager" || role === "staff",
-    canAccessAdmin: role === "manager",
-    canAccessKnowledge: role === "manager" || role === "staff",
-    canManageKnowledge: role === "manager",
-    canViewLogs: role === "manager",
-    canManageAccessControl: role === "manager",
+    canOpenAdminPanel: role === "senior_admin" || role === "manager" || role === "staff",
+    canAccessAdmin: role === "senior_admin" || role === "manager",
+    canAccessKnowledge: role === "senior_admin" || role === "manager" || role === "staff",
+    canManageKnowledge: role === "senior_admin" || role === "manager",
+    canViewLogs: role === "senior_admin" || role === "manager",
+    canManageAccessControl: role === "senior_admin" || role === "manager",
   };
 }
 
-export async function upsertAccessRole(input: { discordId: string; displayName?: string; role: AccessRole; actorId?: string }) {
+export async function upsertAccessRole(input: { discordId: string; displayName?: string; role: WritableAccessRole; actorId?: string }) {
   const discordId = normalizeDiscordId(input.discordId);
   if (!discordId) throw new Error("discordId is required");
 
@@ -236,13 +277,16 @@ export async function listAccessControlEntries() {
     // audit table may not exist in very early setup
   }
 
-  const merged = new Map<string, { discord_id: string; display_name: string | null; role: AccessRole; source: "bootstrap" | "db"; added_by: string | null; updated_by: string | null; created_at: string | null; updated_at: string | null }>();
+  const merged = new Map<string, { discord_id: string; display_name: string | null; role: AccessRole; role_label: string; source: "bootstrap" | "db"; added_by: string | null; updated_by: string | null; created_at: string | null; updated_at: string | null }>();
 
   for (const id of ADMIN_IDS) {
+    const bootstrap = getBootstrapRoleInfo(id);
+    if (!bootstrap) continue;
     merged.set(id, {
       discord_id: id,
       display_name: knownNames.get(id) || null,
-      role: "manager",
+      role: bootstrap.role,
+      role_label: bootstrap.roleLabel,
       source: "bootstrap",
       added_by: null,
       updated_by: null,
@@ -257,6 +301,7 @@ export async function listAccessControlEntries() {
         discord_id: row.discord_id,
         display_name: row.display_name || knownNames.get(row.discord_id) || null,
         role: row.role,
+          role_label: defaultRoleLabel(row.role),
         source: "db",
         added_by: row.added_by,
         updated_by: row.updated_by,
@@ -267,7 +312,8 @@ export async function listAccessControlEntries() {
   }
 
   return Array.from(merged.values()).sort((a, b) => {
-    if (a.role !== b.role) return a.role === "manager" ? -1 : 1;
+    const levelDiff = getAccessLevel(b.role) - getAccessLevel(a.role);
+    if (levelDiff !== 0) return levelDiff;
     return a.discord_id.localeCompare(b.discord_id);
   });
 }

@@ -1,10 +1,23 @@
-export const ADMIN_IDS = [
+export const SENIOR_ADMIN_IDS = [
   "1208908529411301387", // Syn
-  "1406555930769756161", 
-  "1241945084346372247",
-  "845669772926779392",  // New Admin 4
-  "417331086369226752"   // New Admin 5
-];
+  "1241945084346372247", // Zach
+] as const;
+
+export const HONORARY_MANAGER = {
+  id: "1406555930769756161",
+  title: "Pupbee",
+} as const;
+
+export const MANAGER_IDS = [
+  "845669772926779392",  // Manager 4
+  "417331086369226752"   // Manager 5
+] as const;
+
+export const ADMIN_IDS = [
+  ...SENIOR_ADMIN_IDS,
+  HONORARY_MANAGER.id,
+  ...MANAGER_IDS,
+] as const;
 
 // --- SYSTEM CONTROLS ---
 export const MAINTENANCE_MODE = false; // Set to true to activate lockdown
