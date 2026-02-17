@@ -29,20 +29,44 @@ function isLikelyDiscordSnowflake(input: string) {
 
 async function resolveDiscordDisplayName(discordId: string) {
   const token = String(process.env.DISCORD_BOT_TOKEN || "").trim();
+  const guildId = String(process.env.DISCORD_GUILD_ID || "").trim();
   if (!token || !isLikelyDiscordSnowflake(discordId)) return null;
 
   try {
-    const res = await fetch(`https://discord.com/api/v10/users/${discordId}`, {
+    if (guildId) {
+      const memberRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordId}`, {
+        headers: {
+          Authorization: `Bot ${token}`,
+        },
+        cache: "no-store",
+      });
+
+      if (memberRes.ok) {
+        const memberData = (await memberRes.json().catch(() => ({}))) as {
+          nick?: string | null;
+          user?: {
+            global_name?: string | null;
+            username?: string | null;
+          };
+        };
+        const memberName = String(
+          memberData?.nick || memberData?.user?.global_name || memberData?.user?.username || ""
+        ).trim();
+        if (memberName) return memberName;
+      }
+    }
+
+    const userRes = await fetch(`https://discord.com/api/v10/users/${discordId}`, {
       headers: {
         Authorization: `Bot ${token}`,
       },
       cache: "no-store",
     });
 
-    if (!res.ok) return null;
-    const data = (await res.json().catch(() => ({}))) as { global_name?: string | null; username?: string | null };
-    const name = String(data?.global_name || data?.username || "").trim();
-    return name || null;
+    if (!userRes.ok) return null;
+    const userData = (await userRes.json().catch(() => ({}))) as { global_name?: string | null; username?: string | null };
+    const userName = String(userData?.global_name || userData?.username || "").trim();
+    return userName || null;
   } catch {
     return null;
   }

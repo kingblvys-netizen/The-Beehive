@@ -113,6 +113,9 @@ export default function AdminDashboard() {
   const [newAccessDiscordId, setNewAccessDiscordId] = useState("");
   const [newAccessRole, setNewAccessRole] = useState<"manager" | "staff">("staff");
   const [accessSubmitting, setAccessSubmitting] = useState(false);
+  const [accessBackfilling, setAccessBackfilling] = useState(false);
+  const [editingAccessDiscordId, setEditingAccessDiscordId] = useState<string | null>(null);
+  const [editingAccessName, setEditingAccessName] = useState("");
   const [accessAudit, setAccessAudit] = useState<AccessAuditRow[]>([]);
   const [accessAuditLoading, setAccessAuditLoading] = useState(false);
   const deferredSearchTerm = useDeferredValue(searchTerm);
@@ -298,6 +301,69 @@ export default function AdminDashboard() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to update role';
       alert(message);
+    }
+  };
+
+  const startEditAccessName = (entry: AccessEntry) => {
+    setEditingAccessDiscordId(entry.discord_id);
+    setEditingAccessName(String(entry.display_name || ""));
+  };
+
+  const cancelEditAccessName = () => {
+    setEditingAccessDiscordId(null);
+    setEditingAccessName("");
+  };
+
+  const saveAccessName = async (entry: AccessEntry) => {
+    const nextName = editingAccessName.trim();
+    try {
+      const res = await fetch('/api/admin/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discordId: entry.discord_id,
+          displayName: nextName,
+          role: entry.role,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Failed to save name');
+      await loadAccessEntries();
+      await loadAccessAudit();
+      cancelEditAccessName();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to save name';
+      alert(message);
+    }
+  };
+
+  const backfillKnownAccessNames = async () => {
+    const candidates = accessEntries.filter((entry) => String(entry.display_name || '').trim());
+    if (candidates.length === 0) {
+      alert('No known names available to backfill right now.');
+      return;
+    }
+
+    setAccessBackfilling(true);
+    try {
+      await Promise.all(
+        candidates.map(async (entry) => {
+          await fetch('/api/admin/access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              discordId: entry.discord_id,
+              displayName: String(entry.display_name || '').trim(),
+              role: entry.role,
+            }),
+          });
+        })
+      );
+
+      await loadAccessEntries();
+      await loadAccessAudit();
+    } finally {
+      setAccessBackfilling(false);
     }
   };
 
@@ -716,9 +782,18 @@ export default function AdminDashboard() {
           <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4 flex items-center gap-2">
             <Shield size={12} /> Staff & Manager Access Control
           </h3>
-          <p className="text-xs text-neutral-400 mb-4">
-            Staff can read Staff Knowledge only. Managers/Admin can access the Admin Panel and create/edit knowledge content.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <p className="text-xs text-neutral-400">
+              Staff can read Staff Knowledge only. Managers/Admin can access the Admin Panel and create/edit knowledge content.
+            </p>
+            <button
+              onClick={backfillKnownAccessNames}
+              disabled={accessBackfilling || accessLoading || accessEntries.length === 0}
+              className="px-3 py-2 border border-white/20 bg-white/5 text-neutral-200 rounded-lg text-[10px] uppercase tracking-widest disabled:opacity-50"
+            >
+              {accessBackfilling ? 'Backfilling...' : 'Backfill Known Names'}
+            </button>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
             <input
@@ -764,8 +839,33 @@ export default function AdminDashboard() {
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-neutral-500">Source: {entry.source}</span>
+                  <div className="flex items-center gap-2">
+                    {editingAccessDiscordId === entry.discord_id ? (
+                      <>
+                        <button
+                          onClick={() => saveAccessName(entry)}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-green-500/40 bg-green-500/10 text-green-300"
+                        >
+                          Save Name
+                        </button>
+                        <button
+                          onClick={cancelEditAccessName}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-white/20 bg-white/5 text-neutral-300"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => startEditAccessName(entry)}
+                        className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-white/20 bg-white/5 text-neutral-300"
+                      >
+                        Edit Name
+                      </button>
+                    )}
+
                   {entry.source !== 'bootstrap' ? (
-                    <div className="flex items-center gap-2">
+                    <>
                       {entry.role !== 'manager' ? (
                         <button
                           onClick={() => changeAccessRole(entry.discord_id, 'manager')}
@@ -787,11 +887,22 @@ export default function AdminDashboard() {
                       >
                         Remove
                       </button>
-                    </div>
+                    </>
                   ) : (
                     <span className="text-[10px] uppercase tracking-widest text-neutral-600">Protected</span>
                   )}
+                  </div>
                 </div>
+                {editingAccessDiscordId === entry.discord_id ? (
+                  <div className="mt-2">
+                    <input
+                      value={editingAccessName}
+                      onChange={(e) => setEditingAccessName(e.target.value)}
+                      placeholder="Set display name"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs outline-none focus:border-yellow-500/40"
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-2 text-[10px] uppercase tracking-widest text-neutral-600 space-y-1">
                   {entry.updated_by ? <div>Updated by: {entry.updated_by}</div> : null}
                   {entry.updated_at ? <div>Updated: {new Date(entry.updated_at).toLocaleString()}</div> : null}

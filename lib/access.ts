@@ -26,6 +26,16 @@ type AccessRow = {
   updated_at: string;
 };
 
+type ApplicationNameRow = {
+  discord_id: string;
+  username: string | null;
+};
+
+type AuditNameRow = {
+  actor_id: string;
+  actor_name: string | null;
+};
+
 function normalizeDiscordId(input: unknown) {
   return String(input || "").trim();
 }
@@ -184,12 +194,54 @@ export async function listAccessControlEntries() {
     ORDER BY updated_at DESC
   `;
 
+  const knownNames = new Map<string, string>();
+
+  try {
+    const appNames = await sql<ApplicationNameRow>`
+      SELECT DISTINCT ON (discord_id)
+        discord_id,
+        username
+      FROM applications
+      WHERE discord_id IS NOT NULL
+        AND COALESCE(username, '') <> ''
+      ORDER BY discord_id, created_at DESC
+    `;
+
+    for (const row of appNames.rows) {
+      const id = String(row.discord_id || "").trim();
+      const name = String(row.username || "").trim();
+      if (id && name) knownNames.set(id, name);
+    }
+  } catch {
+    // applications table may not exist in very early setup
+  }
+
+  try {
+    const auditNames = await sql<AuditNameRow>`
+      SELECT DISTINCT ON (actor_id)
+        actor_id,
+        actor_name
+      FROM admin_activity_logs
+      WHERE actor_id IS NOT NULL
+        AND COALESCE(actor_name, '') <> ''
+      ORDER BY actor_id, created_at DESC
+    `;
+
+    for (const row of auditNames.rows) {
+      const id = String(row.actor_id || "").trim();
+      const name = String(row.actor_name || "").trim();
+      if (id && name && !knownNames.has(id)) knownNames.set(id, name);
+    }
+  } catch {
+    // audit table may not exist in very early setup
+  }
+
   const merged = new Map<string, { discord_id: string; display_name: string | null; role: AccessRole; source: "bootstrap" | "db"; added_by: string | null; updated_by: string | null; created_at: string | null; updated_at: string | null }>();
 
   for (const id of ADMIN_IDS) {
     merged.set(id, {
       discord_id: id,
-      display_name: null,
+      display_name: knownNames.get(id) || null,
       role: "manager",
       source: "bootstrap",
       added_by: null,
@@ -203,7 +255,7 @@ export async function listAccessControlEntries() {
     if (!merged.has(row.discord_id) || row.role === "manager") {
       merged.set(row.discord_id, {
         discord_id: row.discord_id,
-        display_name: row.display_name,
+        display_name: row.display_name || knownNames.get(row.discord_id) || null,
         role: row.role,
         source: "db",
         added_by: row.added_by,
