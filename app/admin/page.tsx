@@ -11,7 +11,7 @@ import {
   AlertTriangle, Power, Activity, Target, PieChart, ExternalLink, BookOpen, ClipboardList
 } from 'lucide-react';
 import { roles as staticRoleData, getQuestions } from '../data';
-import { APPLICATION_RETENTION_DAYS } from '@/lib/config'; // use shared config
+import { APPLICATION_RETENTION_DAYS, SYN_DISCORD_ID } from '@/lib/config'; // use shared config
 
 type ApplicationRecord = {
   id: number;
@@ -831,9 +831,9 @@ export default function AdminDashboard() {
               onChange={(e) => setNewAccessRole(e.target.value as "senior_admin" | "manager" | "staff")}
               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-500/40"
             >
-              {currentAccessRole === "senior_admin" ? <option value="senior_admin">Senior Admin (Full Control)</option> : null}
+              {currentDiscordId === SYN_DISCORD_ID ? <option value="senior_admin">Senior Admin (Full Control)</option> : null}
               <option value="staff">Staff (Knowledge Read)</option>
-              <option value="manager">Managers/Admin (Admin + Knowledge Edit)</option>
+              {currentAccessRole === "senior_admin" ? <option value="manager">Managers/Admin (Admin + Knowledge Edit)</option> : null}
             </select>
             <button
               onClick={upsertAccessEntry}
@@ -848,13 +848,16 @@ export default function AdminDashboard() {
             {accessEntries.map((entry) => (
               <div key={entry.discord_id} className="border border-white/10 rounded-xl p-3 bg-black/30">
                 {(() => {
+                  const isSyn = currentDiscordId === SYN_DISCORD_ID;
                   const managerCanManageEntry = currentAccessRole === "manager" && roleRank(entry.role) < roleRank("manager");
                   const seniorCanManageEntry = currentAccessRole === "senior_admin";
                   const canManageEntry = entry.source !== "bootstrap" && (managerCanManageEntry || seniorCanManageEntry);
-                  const canSetSenior = currentAccessRole === "senior_admin" && entry.role !== "senior_admin";
-                  const canSetManager = canManageEntry && entry.role === "staff";
-                  const canSetStaff = canManageEntry && entry.role !== "staff";
-                  const canDemoteSenior = currentAccessRole === "senior_admin" && entry.role === "senior_admin" && entry.discord_id !== currentDiscordId;
+                  const canEditName = canManageEntry;
+                  const canSetSenior = isSyn && entry.role !== "senior_admin";
+                  const canSetManager = currentAccessRole === "senior_admin" && entry.role === "staff";
+                  const canSetStaff =
+                    currentAccessRole === "senior_admin" && entry.role !== "staff" && (entry.role !== "senior_admin" || isSyn);
+                  const canRemove = canManageEntry && (entry.role !== "senior_admin" || isSyn);
 
                   return (
                     <>
@@ -870,7 +873,7 @@ export default function AdminDashboard() {
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <span className="text-[10px] uppercase tracking-widest text-neutral-500">Source: {entry.source}</span>
                   <div className="flex items-center gap-2">
-                    {editingAccessDiscordId === entry.discord_id ? (
+                    {canEditName && editingAccessDiscordId === entry.discord_id ? (
                       <>
                         <button
                           onClick={() => saveAccessName(entry)}
@@ -885,14 +888,18 @@ export default function AdminDashboard() {
                           Cancel
                         </button>
                       </>
-                    ) : (
+                    ) : canEditName ? (
                       <button
                         onClick={() => startEditAccessName(entry)}
                         className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-white/20 bg-white/5 text-neutral-300"
                       >
                         Edit Name
                       </button>
-                    )}
+                    ) : null}
+
+                    {!canEditName ? (
+                      <span className="text-[10px] uppercase tracking-widest text-neutral-600">Name Locked</span>
+                    ) : null}
 
                   {canManageEntry ? (
                     <>
@@ -914,7 +921,7 @@ export default function AdminDashboard() {
                         </button>
                       ) : null}
 
-                      {(canSetStaff || canDemoteSenior) ? (
+                      {canSetStaff ? (
                         <button
                           onClick={() => changeAccessRole(entry.discord_id, 'staff')}
                           className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-blue-500/40 bg-blue-500/10 text-blue-300"
@@ -923,12 +930,14 @@ export default function AdminDashboard() {
                         </button>
                       ) : null}
 
-                      <button
-                        onClick={() => removeAccessEntry(entry.discord_id)}
-                        className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-red-300"
-                      >
-                        Remove
-                      </button>
+                      {canRemove ? (
+                        <button
+                          onClick={() => removeAccessEntry(entry.discord_id)}
+                          className="text-[10px] uppercase tracking-widest px-2 py-1 rounded border border-red-500/40 bg-red-500/10 text-red-300"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </>
                   ) : (
                     <span className="text-[10px] uppercase tracking-widest text-neutral-600">Restricted</span>

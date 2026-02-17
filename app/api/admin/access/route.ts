@@ -9,7 +9,7 @@ import {
   upsertAccessRole,
 } from "@/lib/access";
 import { logAdminActivity } from "@/lib/audit";
-import { ADMIN_IDS, SENIOR_ADMIN_IDS } from "@/lib/config";
+import { ADMIN_IDS, SENIOR_ADMIN_IDS, SYN_DISCORD_ID } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,18 +144,23 @@ export async function POST(req: Request) {
     }
 
     const actorRole = access.role;
+    const actorId = access.discordId;
     const targetCurrentRole = await getAccessRoleByDiscordId(discordId);
 
-    if (role === "senior_admin" && actorRole !== "senior_admin") {
-      return NextResponse.json({ error: "Only Senior Admin can assign Senior Admin role" }, { status: 403 });
+    if (role === "senior_admin" && actorId !== SYN_DISCORD_ID) {
+      return NextResponse.json({ error: "Only Syn can assign Senior Admin role" }, { status: 403 });
+    }
+
+    if (targetCurrentRole === "senior_admin" && actorId !== SYN_DISCORD_ID) {
+      return NextResponse.json({ error: "Only Syn can modify Senior Admin entries" }, { status: 403 });
     }
 
     if (actorRole === "manager") {
+      if (role !== "staff") {
+        return NextResponse.json({ error: "Managers can only assign staff role" }, { status: 403 });
+      }
       if (targetCurrentRole === "manager" || targetCurrentRole === "senior_admin") {
         return NextResponse.json({ error: "Managers cannot modify peer or higher access" }, { status: 403 });
-      }
-      if (role === "senior_admin") {
-        return NextResponse.json({ error: "Managers cannot assign Senior Admin role" }, { status: 403 });
       }
     }
 
@@ -204,7 +209,11 @@ export async function DELETE(req: Request) {
     }
 
     const actorRole = access.role;
+    const actorId = access.discordId;
     const targetCurrentRole = await getAccessRoleByDiscordId(discordId);
+    if (targetCurrentRole === "senior_admin" && actorId !== SYN_DISCORD_ID) {
+      return NextResponse.json({ error: "Only Syn can remove Senior Admin entries" }, { status: 403 });
+    }
     if (actorRole === "manager" && (targetCurrentRole === "manager" || targetCurrentRole === "senior_admin")) {
       return NextResponse.json({ error: "Managers cannot remove peer or higher access" }, { status: 403 });
     }
