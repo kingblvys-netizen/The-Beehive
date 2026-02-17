@@ -11,6 +11,8 @@ import {
 import { logAdminActivity } from "@/lib/audit";
 import { ADMIN_IDS } from "@/lib/config";
 
+const bootstrapAdminIds = new Set<string>(ADMIN_IDS);
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -200,7 +202,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "discordId is required" }, { status: 400 });
     }
 
-    if (ADMIN_IDS.includes(discordId)) {
+    if (bootstrapAdminIds.has(discordId)) {
       return NextResponse.json({ error: "Cannot remove bootstrap manager" }, { status: 400 });
     }
 
