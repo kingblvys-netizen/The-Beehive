@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import {
+  getAccessRoleByDiscordId,
   getSessionAccessInfo,
   listAccessControlEntries,
   removeAccessRole,
   upsertAccessRole,
 } from "@/lib/access";
 import { logAdminActivity } from "@/lib/audit";
-import { ADMIN_IDS } from "@/lib/config";
+import { ADMIN_IDS, SENIOR_ADMIN_IDS } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 type UpsertBody = {
   discordId?: string;
   displayName?: string;
-  role?: "manager" | "staff";
+  role?: "senior_admin" | "manager" | "staff";
 };
 
 type DeleteBody = {
@@ -130,12 +131,28 @@ export async function POST(req: Request) {
     const displayName = String(body.displayName || "").trim();
     const role = body.role;
 
-    if (!discordId || (role !== "manager" && role !== "staff")) {
+    if (!discordId || (role !== "senior_admin" && role !== "manager" && role !== "staff")) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
     if (!isLikelyDiscordSnowflake(discordId)) {
       return NextResponse.json({ error: "Invalid Discord ID format" }, { status: 400 });
+    }
+
+    const actorRole = access.role;
+    const targetCurrentRole = await getAccessRoleByDiscordId(discordId);
+
+    if (role === "senior_admin" && actorRole !== "senior_admin") {
+      return NextResponse.json({ error: "Only Senior Admin can assign Senior Admin role" }, { status: 403 });
+    }
+
+    if (actorRole === "manager") {
+      if (targetCurrentRole === "manager" || targetCurrentRole === "senior_admin") {
+        return NextResponse.json({ error: "Managers cannot modify peer or higher access" }, { status: 403 });
+      }
+      if (role === "senior_admin") {
+        return NextResponse.json({ error: "Managers cannot assign Senior Admin role" }, { status: 403 });
+      }
     }
 
     const entry = await upsertAccessRole({
@@ -178,8 +195,14 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "discordId is required" }, { status: 400 });
     }
 
-    if (ADMIN_IDS.includes(discordId)) {
-      return NextResponse.json({ error: "Cannot remove bootstrap manager" }, { status: 400 });
+    if (ADMIN_IDS.includes(discordId) || SENIOR_ADMIN_IDS.includes(discordId)) {
+      return NextResponse.json({ error: "Cannot remove bootstrap access" }, { status: 400 });
+    }
+
+    const actorRole = access.role;
+    const targetCurrentRole = await getAccessRoleByDiscordId(discordId);
+    if (actorRole === "manager" && (targetCurrentRole === "manager" || targetCurrentRole === "senior_admin")) {
+      return NextResponse.json({ error: "Managers cannot remove peer or higher access" }, { status: 403 });
     }
 
     const removed = await removeAccessRole(discordId);
