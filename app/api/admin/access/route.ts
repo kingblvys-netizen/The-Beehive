@@ -2,16 +2,13 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import {
-  getAccessLevel,
   getSessionAccessInfo,
   listAccessControlEntries,
   removeAccessRole,
   upsertAccessRole,
 } from "@/lib/access";
 import { logAdminActivity } from "@/lib/audit";
-import { ADMIN_IDS, SYN_DISCORD_ID } from "@/lib/config";
-
-const bootstrapAdminIds = new Set<string>(ADMIN_IDS);
+import { ADMIN_IDS } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +16,7 @@ export const dynamic = "force-dynamic";
 type UpsertBody = {
   discordId?: string;
   displayName?: string;
-  role?: "senior_admin" | "manager" | "staff";
+  role?: "manager" | "staff";
 };
 
 type DeleteBody = {
@@ -133,38 +130,12 @@ export async function POST(req: Request) {
     const displayName = String(body.displayName || "").trim();
     const role = body.role;
 
-    if (!discordId || (role !== "senior_admin" && role !== "manager" && role !== "staff")) {
+    if (!discordId || (role !== "manager" && role !== "staff")) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
     if (!isLikelyDiscordSnowflake(discordId)) {
       return NextResponse.json({ error: "Invalid Discord ID format" }, { status: 400 });
-    }
-
-    const actorLevel = getAccessLevel(access.role);
-    const isSeniorAdmin = access.role === "senior_admin";
-    const isSynOwner = access.discordId === SYN_DISCORD_ID;
-
-    const currentEntries = await listAccessControlEntries();
-    const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
-    const targetLevel = getAccessLevel(target?.role || null);
-
-    if (target?.role === "senior_admin" && !isSynOwner) {
-      return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
-    }
-
-    if (role === "senior_admin" && !isSynOwner) {
-      return NextResponse.json({ error: "Only Syn can assign Senior Admin role" }, { status: 403 });
-    }
-
-    if (!isSeniorAdmin && !isSynOwner) {
-      if (targetLevel >= actorLevel && targetLevel > 0) {
-        return NextResponse.json({ error: "Managers can only modify users below them" }, { status: 403 });
-      }
-
-      if (role === "manager") {
-        return NextResponse.json({ error: "Only Senior Admin can assign manager role" }, { status: 403 });
-      }
     }
 
     const entry = await upsertAccessRole({
@@ -207,24 +178,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "discordId is required" }, { status: 400 });
     }
 
-    if (bootstrapAdminIds.has(discordId)) {
+    if (ADMIN_IDS.includes(discordId)) {
       return NextResponse.json({ error: "Cannot remove bootstrap manager" }, { status: 400 });
-    }
-
-    const actorLevel = getAccessLevel(access.role);
-    const isSeniorAdmin = access.role === "senior_admin";
-    const isSynOwner = access.discordId === SYN_DISCORD_ID;
-
-    const currentEntries = await listAccessControlEntries();
-    const target = currentEntries.find((entry) => entry.discord_id === discordId) || null;
-    const targetLevel = getAccessLevel(target?.role || null);
-
-    if (target?.role === "senior_admin" && !isSynOwner) {
-      return NextResponse.json({ error: "Senior Admin entries are protected" }, { status: 403 });
-    }
-
-    if (!isSeniorAdmin && !isSynOwner && targetLevel >= actorLevel && targetLevel > 0) {
-      return NextResponse.json({ error: "Managers can only remove users below them" }, { status: 403 });
     }
 
     const removed = await removeAccessRole(discordId);

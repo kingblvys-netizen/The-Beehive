@@ -2,8 +2,6 @@ import { sql } from "@vercel/postgres";
 import type { Session } from "next-auth";
 import { ADMIN_IDS } from "@/lib/config";
 
-const bootstrapAdminIds = new Set<string>(ADMIN_IDS);
-
 export type KnowledgeArticle = {
   id: number;
   slug: string;
@@ -75,7 +73,7 @@ export function getSessionAdminId(session: Session | null) {
 }
 
 export function isAdminSession(session: Session | null) {
-  return bootstrapAdminIds.has(getSessionAdminId(session));
+  return ADMIN_IDS.includes(getSessionAdminId(session));
 }
 
 export function slugify(input: string) {
